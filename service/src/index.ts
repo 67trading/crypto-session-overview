@@ -24,6 +24,7 @@ export type {
   PrecomputedRegime,
   PreviousBriefContext,
   AltsBreadthSummary,
+  DerivativesNarrativeSummary,
   CollectorRunRecord,
   OverviewRecord,
   OverviewFilters,
@@ -40,6 +41,7 @@ export type { ComputedDataStatus } from './source-health-evaluator.js';
 export { classifyMarketRegime } from './market-regime-classifier.js';
 export type { RegimeClassifierInput } from './market-regime-classifier.js';
 export { analyzeAltsBreadth } from './alts-breadth-analyzer.js';
+export { buildDerivativesNarrative } from './derivatives-narrative-builder.js';
 export type { SessionOverviewDeps, OverviewRunOptions, OverviewRunResult } from './service-types.js';
 export { OverviewInputBuilder } from './overview-input-builder.js';
 export { OverviewFormatter } from './overview-formatter.js';

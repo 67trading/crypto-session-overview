@@ -7,6 +7,7 @@ import { computeDataStatus } from './source-health-evaluator.js';
 import { computeWhatChanged, firstBriefBullets } from './brief-diff-engine.js';
 import { classifyMarketRegime } from './market-regime-classifier.js';
 import { analyzeAltsBreadth } from './alts-breadth-analyzer.js';
+import { buildDerivativesNarrative } from './derivatives-narrative-builder.js';
 import {
   computeWeeklyLevels,
   computeDailyLevels,
@@ -112,6 +113,9 @@ export class OverviewRunner {
       // 5c. Analyze alts breadth from market snapshots
       const altsBreadth = analyzeAltsBreadth(marketSnapshots);
 
+      // 5d. Build derivatives narrative from status enums
+      const derivativesNarrative = buildDerivativesNarrative(derivativesContext);
+
       // 6. Build data quality summary and pre-compute source health
       const failedSources = collectorRuns
         .filter((r) => r.status === 'FAILED')
@@ -190,6 +194,7 @@ export class OverviewRunner {
         previousBrief,
         precomputedRegime,
         altsBreadth,
+        derivativesNarrative,
       });
 
       // 8. Save input snapshot
@@ -215,6 +220,18 @@ export class OverviewRunner {
           breadth: altsBreadth.totalTracked > 0
             ? altsBreadth.breadthLabel
             : llmResult.output.alts.breadth,
+        },
+        derivatives: {
+          ...llmResult.output.derivatives,
+          funding: derivativesNarrative.funding !== 'data unavailable'
+            ? derivativesNarrative.funding
+            : llmResult.output.derivatives.funding,
+          oi: derivativesNarrative.oi !== 'data unavailable'
+            ? derivativesNarrative.oi
+            : llmResult.output.derivatives.oi,
+          positioning: derivativesNarrative.positioning !== 'data unavailable'
+            ? derivativesNarrative.positioning
+            : llmResult.output.derivatives.positioning,
         },
         whatChanged: previousOutput !== null
           ? computeWhatChanged(previousOutput, llmResult.output)

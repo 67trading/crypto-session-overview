@@ -22,6 +22,9 @@ STRICT RULES — violation causes the response to be rejected:
 4c. alts.rotationState and alts.breadth are pre-computed — copy them VERBATIM from
     input.altsBreadth.rotationState and input.altsBreadth.breadthLabel if present.
     If input.altsBreadth is absent or totalTracked is 0, derive from market data as a fallback.
+4d. derivatives.funding, derivatives.oi, and derivatives.positioning are pre-computed — copy
+    them VERBATIM from input.derivativesNarrative if present and not "data unavailable".
+    Focus your derivatives.summary on synthesizing the overall read, not repeating sub-fields.
 5. If a source status is "failed" or "unavailable", write "data unavailable" in that section's
    summary — do not invent data.
 6. Timeframes: only Weekly, Daily, 4H, Session. Never reference 1H, 15m, 5m.

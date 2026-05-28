@@ -115,6 +115,12 @@ export type AltsBreadthSummary = {
   rotationState: 'broad_rotation' | 'selective_rotation' | 'no_rotation' | 'weak' | 'unknown';
 };
 
+export type DerivativesNarrativeSummary = {
+  funding: string;
+  oi: string;
+  positioning: string;
+};
+
 export type PreviousBriefContext = {
   generatedAtUtc: string;
   marketRegime: MarketRegime;
@@ -161,6 +167,7 @@ export type OverviewInput = {
   previousBrief?: PreviousBriefContext;
   precomputedRegime?: PrecomputedRegime;
   altsBreadth?: AltsBreadthSummary;
+  derivativesNarrative?: DerivativesNarrativeSummary;
 };
 
 export type DataStatusValue = 'fresh' | 'stale' | 'partial' | 'failed' | 'unavailable';
