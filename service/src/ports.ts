@@ -236,6 +236,8 @@ export type CollectorRunRecord = {
   itemCount: number;
   errorMessage?: string;
   durationMs?: number;
+  dataFreshnessSeconds?: number;
+  fallbackUsed?: boolean;
 };
 
 export type OverviewRecord = {
@@ -262,6 +264,8 @@ export type TelegramPostRecord = {
   messageId: string;
   chatId: string;
   session: CryptoSession;
+  messageIndex?: number;
+  text?: string;
 };
 
 export type LlmUsageRecord = {
@@ -272,6 +276,8 @@ export type LlmUsageRecord = {
   totalTokens: number;
   durationMs: number;
   promptVersion?: string;
+  session?: CryptoSession;
+  costEstimate?: number;
 };
 
 export type EventFilters = {

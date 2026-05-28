@@ -42,6 +42,11 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         relevanceScore: e.relevanceScore,
         dedupeKey: e.dedupeKey,
         rawJson: JSON.stringify(e),
+        ...(e.asset !== undefined ? { asset: e.asset } : {}),
+        ...(e.exchange !== undefined ? { exchange: e.exchange } : {}),
+        ...(e.scheduledTime !== undefined ? { scheduledTime: e.scheduledTime } : {}),
+        importance: e.importance,
+        confidence: e.confidence,
       })),
     });
   }
@@ -56,22 +61,30 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         itemCount: run.itemCount,
         ...(run.errorMessage !== undefined ? { errorMessage: run.errorMessage } : {}),
         ...(run.durationMs !== undefined ? { durationMs: run.durationMs } : {}),
+        ...(run.dataFreshnessSeconds !== undefined ? { dataFreshnessSeconds: run.dataFreshnessSeconds } : {}),
+        ...(run.fallbackUsed !== undefined ? { fallbackUsed: run.fallbackUsed } : {}),
       },
     });
   }
 
   async saveOverview(record: OverviewRecord): Promise<string> {
     const telegramPostIds = JSON.stringify(record.telegramPostIds ?? []);
+    const output = record.outputJson;
     const row = await this.prisma.sessionOverview.create({
       data: {
         session: record.session,
         status: record.status,
-        outputJson: JSON.stringify(record.outputJson),
+        outputJson: JSON.stringify(output),
         ...(record.humanReport !== undefined ? { humanReport: record.humanReport } : {}),
         ...(record.inputSnapshotId !== undefined ? { inputSnapshotId: record.inputSnapshotId } : {}),
         telegramPostIds,
         ...(record.promptVersion !== undefined ? { promptVersion: record.promptVersion } : {}),
         ...(record.model !== undefined ? { model: record.model } : {}),
+        marketRegime: output.marketRegime,
+        briefConfidence: output.briefConfidence,
+        dataStatusJson: JSON.stringify(output.dataStatus),
+        whatChangedJson: JSON.stringify(output.whatChanged),
+        scenariosJson: JSON.stringify(output.scenarios),
       },
     });
     return row.id;
@@ -112,6 +125,8 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         messageId: post.messageId,
         chatId: post.chatId,
         session: post.session,
+        ...(post.messageIndex !== undefined ? { messageIndex: post.messageIndex } : {}),
+        ...(post.text !== undefined ? { text: post.text } : {}),
       },
     });
     return row.id;
@@ -127,6 +142,8 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         totalTokens: usage.totalTokens,
         durationMs: usage.durationMs,
         ...(usage.promptVersion !== undefined ? { promptVersion: usage.promptVersion } : {}),
+        ...(usage.session !== undefined ? { session: usage.session } : {}),
+        ...(usage.costEstimate !== undefined ? { costEstimate: usage.costEstimate } : {}),
       },
     });
     return row.id;
@@ -179,6 +196,8 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
       itemCount: row.itemCount,
       ...(row.errorMessage !== null ? { errorMessage: row.errorMessage } : {}),
       ...(row.durationMs !== null ? { durationMs: row.durationMs } : {}),
+      ...(row.dataFreshnessSeconds !== null ? { dataFreshnessSeconds: row.dataFreshnessSeconds } : {}),
+      ...(row.fallbackUsed !== null ? { fallbackUsed: row.fallbackUsed } : {}),
     }));
   }
 

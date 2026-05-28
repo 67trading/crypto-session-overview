@@ -162,11 +162,12 @@ export class OverviewRunner {
       if (llmResult.usage !== undefined) {
         await repository.saveLlmUsage({
           overviewId,
-          model: this.deps.llmClient.constructor.name,
+          model: this.deps.llmClient.modelName,
           inputTokens: llmResult.usage.inputTokens,
           outputTokens: llmResult.usage.outputTokens,
           totalTokens: llmResult.usage.totalTokens,
           durationMs: llmResult.usage.durationMs,
+          session,
         });
       }
 
@@ -174,18 +175,20 @@ export class OverviewRunner {
       if (options.publish === true && this.deps.publisher !== undefined) {
         try {
           const chunks = this.formatter.splitForTelegram(humanReport);
-          for (const chunk of chunks) {
+          for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i]!;
             const ids = await this.deps.publisher.publish(chunk, session);
             telegramPostIds.push(...ids);
-          }
-          // Save telegram post IDs
-          for (const msgId of telegramPostIds) {
-            await repository.saveTelegramPost({
-              overviewId,
-              messageId: msgId,
-              chatId: 'configured-chat',
-              session,
-            });
+            for (const msgId of ids) {
+              await repository.saveTelegramPost({
+                overviewId,
+                messageId: msgId,
+                chatId: 'configured-chat',
+                session,
+                messageIndex: i,
+                text: chunk,
+              });
+            }
           }
           // Update existing overview row with post IDs (no duplicate insert)
           await repository.updateOverviewTelegramPosts(overviewId, telegramPostIds);

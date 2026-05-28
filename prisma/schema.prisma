@@ -18,6 +18,12 @@ model SessionOverview {
   telegramPostIds String   @default("[]")
   promptVersion   String?
   model           String?
+  // Extracted for queryability (Patch 3)
+  marketRegime    String?
+  briefConfidence String?
+  dataStatusJson  String?
+  whatChangedJson String?
+  scenariosJson   String?
   createdAt       DateTime @default(now())
 }
 
@@ -38,59 +44,76 @@ model CollectedEvent {
   relevanceScore Float
   dedupeKey      String
   rawJson        String
+  // Extracted for querying without parsing rawJson (Patch 3)
+  asset          String?
+  exchange       String?
+  scheduledTime  String?
+  importance     String?
+  confidence     String?
   collectedAt    DateTime @default(now())
 }
 
 model CollectorRun {
-  id            String    @id @default(uuid())
-  collectorName String
-  startedAt     DateTime
-  finishedAt    DateTime?
-  status        String
-  itemCount     Int
-  errorMessage  String?
-  durationMs    Int?
-  createdAt     DateTime  @default(now())
+  id                   String    @id @default(uuid())
+  collectorName        String
+  startedAt            DateTime
+  finishedAt           DateTime?
+  status               String
+  itemCount            Int
+  errorMessage         String?
+  durationMs           Int?
+  // Patch 3 additions
+  dataFreshnessSeconds Int?
+  fallbackUsed         Boolean?
+  createdAt            DateTime  @default(now())
 }
 
 model TelegramOverviewPost {
-  id         String   @id @default(uuid())
-  overviewId String
-  messageId  String
-  chatId     String
-  session    String
-  postedAt   DateTime @default(now())
+  id           String   @id @default(uuid())
+  overviewId   String
+  messageId    String
+  chatId       String
+  session      String
+  // Patch 3 additions
+  messageIndex Int?
+  text         String?
+  status       String   @default("sent")
+  errorMessage String?
+  postedAt     DateTime @default(now())
 }
 
 model OverviewLlmUsage {
-  id              String   @id @default(uuid())
-  overviewId      String
-  model           String
-  inputTokens     Int
-  outputTokens    Int
-  totalTokens     Int
-  durationMs      Int
-  promptVersion   String?
-  createdAt       DateTime @default(now())
+  id            String   @id @default(uuid())
+  overviewId    String
+  model         String
+  inputTokens   Int
+  outputTokens  Int
+  totalTokens   Int
+  durationMs    Int
+  promptVersion String?
+  // Patch 3 additions
+  session       String?
+  costEstimate  Float?
+  createdAt     DateTime @default(now())
 }
 
 model ActiveSetup {
-  id              String   @id @default(uuid())
-  setupId         String   @unique
-  symbol          String
-  direction       String
-  setupType       String
-  timeframeSource String
-  status          String
-  relevantZoneLow Float?
+  id               String   @id @default(uuid())
+  setupId          String   @unique
+  symbol           String
+  direction        String
+  setupType        String
+  timeframeSource  String
+  status           String
+  relevantZoneLow  Float?
   relevantZoneHigh Float?
-  invalidation    Float?
-  updatedAt       DateTime @updatedAt
-  createdAt       DateTime @default(now())
+  invalidation     Float?
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
 }
 
 model SchedulerLock {
-  id          String   @id
-  lockedAt    DateTime
-  expiresAt   DateTime
+  id        String   @id
+  lockedAt  DateTime
+  expiresAt DateTime
 }
