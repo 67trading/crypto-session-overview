@@ -5,6 +5,7 @@ import { OverviewInputBuilder } from './overview-input-builder.js';
 import { OverviewFormatter } from './overview-formatter.js';
 import { computeDataStatus } from './source-health-evaluator.js';
 import { computeWhatChanged, firstBriefBullets } from './brief-diff-engine.js';
+import { classifyMarketRegime } from './market-regime-classifier.js';
 import {
   computeWeeklyLevels,
   computeDailyLevels,
@@ -146,6 +147,30 @@ export class OverviewRunner {
         upcomingEventTitles: previousOutput.events.upcoming.map((e) => e.title),
       } : undefined;
 
+      // 7b. Pre-compute market regime + confidence from deterministic signals
+      const btcLevels = levels['BTCUSDT'];
+      const btcDerivatives = derivativesContext['BTCUSDT'];
+      const precomputedRegime = classifyMarketRegime({
+        btcTone: btcSnapshot !== undefined && btcLevels !== undefined
+          ? (() => {
+              const price = btcSnapshot.latestPrice;
+              if (btcLevels.weekly !== null && price > btcLevels.weekly.previousWeekHigh) return 'bullish_breakout';
+              if (btcLevels.weekly !== null && price < btcLevels.weekly.previousWeekLow) return 'bearish_breakdown';
+              if (btcLevels.daily !== null && price > btcLevels.daily.dailyMidpoint) return 'constructive';
+              if (btcLevels.daily !== null && price < btcLevels.daily.dailyMidpoint) return 'weak';
+              return 'neutral';
+            })()
+          : 'unknown',
+        btcFourHourStructure: btcLevels?.fourHour?.structure ?? 'unknown',
+        btcWeeklyPosition: btcLevels?.weekly?.weeklyPosition ?? null,
+        btcDailyPosition: btcLevels?.daily?.dailyPosition ?? null,
+        btcFunding: btcDerivatives?.fundingStatus ?? 'unknown',
+        btcOiStatus: btcDerivatives?.oiStatus ?? 'unknown',
+        btcPositioning: btcDerivatives?.positioningStatus ?? 'unknown',
+        hasCriticalEvents: allEvents.some((e) => e.importance === 'critical'),
+        dataStatus,
+      });
+
       const input = this.inputBuilder.build({
         session,
         symbols,
@@ -159,6 +184,7 @@ export class OverviewRunner {
         dataQuality,
         dataStatus,
         previousBrief,
+        precomputedRegime,
       });
 
       // 8. Save input snapshot
@@ -174,6 +200,8 @@ export class OverviewRunner {
       const llmResult = await this.deps.llmClient.generateOverview(input);
       const output = {
         ...llmResult.output,
+        marketRegime: precomputedRegime.marketRegime,
+        briefConfidence: precomputedRegime.briefConfidence,
         whatChanged: previousOutput !== null
           ? computeWhatChanged(previousOutput, llmResult.output)
           : firstBriefBullets(),

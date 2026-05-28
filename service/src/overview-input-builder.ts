@@ -9,6 +9,7 @@ import type {
   DataQualityInfo,
   DataStatus,
   PreviousBriefContext,
+  PrecomputedRegime,
 } from './ports.js';
 
 export class OverviewInputBuilder {
@@ -25,6 +26,7 @@ export class OverviewInputBuilder {
     dataQuality: DataQualityInfo;
     dataStatus?: DataStatus;
     previousBrief?: PreviousBriefContext;
+    precomputedRegime?: PrecomputedRegime;
   }): OverviewInput {
     const btcSnapshot = params.marketSnapshots.find((s) => s.symbol === 'BTCUSDT');
     const ethSnapshot = params.marketSnapshots.find((s) => s.symbol === 'ETHUSDT');
@@ -61,6 +63,7 @@ export class OverviewInputBuilder {
       dataQuality: params.dataQuality,
       ...(params.dataStatus !== undefined ? { dataStatus: params.dataStatus } : {}),
       ...(params.previousBrief !== undefined ? { previousBrief: params.previousBrief } : {}),
+      ...(params.precomputedRegime !== undefined ? { precomputedRegime: params.precomputedRegime } : {}),
     };
 
     // Apply token budget: truncate events and setups if needed

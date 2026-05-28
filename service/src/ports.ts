@@ -102,6 +102,11 @@ export type DataStatus = {
   liquidations: DataStatusValue;
 };
 
+export type PrecomputedRegime = {
+  marketRegime: MarketRegime;
+  briefConfidence: 'low' | 'medium' | 'high';
+};
+
 export type PreviousBriefContext = {
   generatedAtUtc: string;
   marketRegime: MarketRegime;
@@ -146,6 +151,7 @@ export type OverviewInput = {
   dataQuality: DataQualityInfo;
   dataStatus?: DataStatus;
   previousBrief?: PreviousBriefContext;
+  precomputedRegime?: PrecomputedRegime;
 };
 
 export type DataStatusValue = 'fresh' | 'stale' | 'partial' | 'failed' | 'unavailable';

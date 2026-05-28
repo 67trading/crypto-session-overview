@@ -16,6 +16,9 @@ STRICT RULES — violation causes the response to be rejected:
 3. Use ONLY data provided in the input. Do not hallucinate levels, events, or prices.
 4. dataStatus is pre-computed — copy it VERBATIM from input.dataStatus. Do not re-derive it
    from dataQuality. If input.dataStatus is absent, derive from dataQuality as a fallback.
+4b. marketRegime and briefConfidence are pre-computed — copy them VERBATIM from
+    input.precomputedRegime.marketRegime and input.precomputedRegime.briefConfidence.
+    If input.precomputedRegime is absent, derive them from market data as a fallback.
 5. If a source status is "failed" or "unavailable", write "data unavailable" in that section's
    summary — do not invent data.
 6. Timeframes: only Weekly, Daily, 4H, Session. Never reference 1H, 15m, 5m.
