@@ -3,6 +3,7 @@ import type { OverviewRunOptions, OverviewRunResult } from './service-types.js';
 import type { NormalizedEvent, CollectorRunRecord, DataQualityInfo, HtfLevelsSnapshot } from './ports.js';
 import { OverviewInputBuilder } from './overview-input-builder.js';
 import { OverviewFormatter } from './overview-formatter.js';
+import { computeDataStatus } from './source-health-evaluator.js';
 import {
   computeWeeklyLevels,
   computeDailyLevels,
@@ -101,20 +102,27 @@ export class OverviewRunner {
           )
         : null;
 
-      // 6. Build data quality summary
+      // 6. Build data quality summary and pre-compute source health
       const failedSources = collectorRuns
         .filter((r) => r.status === 'FAILED')
         .map((r) => r.collectorName);
+      const collectorQuality = collectorRuns.map((r) => ({
+        name: r.collectorName,
+        status: r.status === 'SUCCESS' ? 'success' as const : r.status === 'FAILED' ? 'failed' as const : 'partial' as const,
+        itemCount: r.itemCount,
+        ...(r.errorMessage !== undefined ? { error: r.errorMessage } : {}),
+      }));
       const dataQuality: DataQualityInfo = {
-        collectors: collectorRuns.map((r) => ({
-          name: r.collectorName,
-          status: r.status === 'SUCCESS' ? 'success' : r.status === 'FAILED' ? 'failed' : 'partial',
-          itemCount: r.itemCount,
-          ...(r.errorMessage !== undefined ? { error: r.errorMessage } : {}),
-        })),
+        collectors: collectorQuality,
         missingSources: failedSources,
         failedSources,
       };
+      // Price and derivatives succeeded — if either had failed, we wouldn't be here
+      const dataStatus = computeDataStatus({
+        priceOk: true,
+        derivativesOk: true,
+        eventCollectors: collectorQuality,
+      });
 
       // 7. Build input
       const input = this.inputBuilder.build({
@@ -128,6 +136,7 @@ export class OverviewRunner {
         levels,
         tokenBudget: options.tokenBudget ?? DEFAULT_TOKEN_BUDGET,
         dataQuality,
+        dataStatus,
       });
 
       // 8. Save input snapshot

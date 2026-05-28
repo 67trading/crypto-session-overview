@@ -95,6 +95,13 @@ export type DataQualityInfo = {
   failedSources: string[];
 };
 
+export type DataStatus = {
+  price: DataStatusValue;
+  events: DataStatusValue;
+  derivatives: DataStatusValue;
+  liquidations: DataStatusValue;
+};
+
 export type OverviewInput = {
   request: {
     session: CryptoSession;
@@ -121,6 +128,7 @@ export type OverviewInput = {
   eventsForSession: NormalizedEvent[];
   activeSetups: ActiveOverviewSetup[];
   dataQuality: DataQualityInfo;
+  dataStatus?: DataStatus;
 };
 
 export type DataStatusValue = 'fresh' | 'stale' | 'partial' | 'failed' | 'unavailable';

@@ -14,11 +14,13 @@ STRICT RULES — violation causes the response to be rejected:
    "positioning", "long exposure" are ALLOWED when describing market conditions. Describe what the market
    IS doing, not what a trader SHOULD do.
 3. Use ONLY data provided in the input. Do not hallucinate levels, events, or prices.
-4. If a data source is marked failed in dataQuality, set its dataStatus field to "failed" and write
-   "data unavailable" in the relevant summary fields — do not invent data.
-5. Timeframes: only Weekly, Daily, 4H, Session. Never reference 1H, 15m, 5m.
-6. scenarios must always contain all three fields: reclaim, rejection, chop.
-7. whatChanged must have 1–8 items. If no previous brief data is in the input, use exactly:
+4. dataStatus is pre-computed — copy it VERBATIM from input.dataStatus. Do not re-derive it
+   from dataQuality. If input.dataStatus is absent, derive from dataQuality as a fallback.
+5. If a source status is "failed" or "unavailable", write "data unavailable" in that section's
+   summary — do not invent data.
+6. Timeframes: only Weekly, Daily, 4H, Session. Never reference 1H, 15m, 5m.
+7. scenarios must always contain all three fields: reclaim, rejection, chop.
+8. whatChanged must have 1–8 items. If no previous brief data is in the input, use exactly:
    ["No previous brief available for this session — initial reading."]
 
 Required JSON schema (all fields required):
@@ -29,10 +31,10 @@ Required JSON schema (all fields required):
   "marketRegime": "risk_on_expansion | constructive_but_extended | defensive_range_bound | range_compression | long_heavy_near_resistance | short_heavy_near_support | risk_off | event_driven | mixed | unknown",
   "briefConfidence": "low | medium | high",
   "dataStatus": {
-    "price": "fresh | stale | partial | failed | unavailable",
-    "events": "fresh | stale | partial | failed | unavailable",
-    "derivatives": "fresh | stale | partial | failed | unavailable",
-    "liquidations": "fresh | stale | partial | failed | unavailable"
+    "price": "COPY from input.dataStatus.price",
+    "events": "COPY from input.dataStatus.events",
+    "derivatives": "COPY from input.dataStatus.derivatives",
+    "liquidations": "COPY from input.dataStatus.liquidations (always 'unavailable' until liq data is added)"
   },
   "whatChanged": ["string — max 8 items, each a concise bullet describing change vs previous brief"],
   "btc": {

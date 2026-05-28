@@ -18,6 +18,9 @@ export type {
   LlmGenerateResult,
   CollectorDataQuality,
   DataQualityInfo,
+  DataStatusValue,
+  DataStatus,
+  MarketRegime,
   CollectorRunRecord,
   OverviewRecord,
   OverviewFilters,
@@ -29,6 +32,8 @@ export type {
   OverviewPublisher,
   LoggerLike,
 } from './ports.js';
+export { computeDataStatus } from './source-health-evaluator.js';
+export type { ComputedDataStatus } from './source-health-evaluator.js';
 export type { SessionOverviewDeps, OverviewRunOptions, OverviewRunResult } from './service-types.js';
 export { OverviewInputBuilder } from './overview-input-builder.js';
 export { OverviewFormatter } from './overview-formatter.js';
