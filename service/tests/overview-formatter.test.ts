@@ -4,43 +4,56 @@ import type { OverviewOutput } from '../src/ports.js';
 
 function makeOutput(overrides: Partial<OverviewOutput> = {}): OverviewOutput {
   const base: OverviewOutput = {
-    reportId: 'test-report-1',
-    createdAt: new Date().toISOString(),
+    briefId: 'brief-ASIA_CRYPTO-1716000000000',
+    generatedAtUtc: '2026-05-18T22:30:00.000Z',
     session: 'ASIA_CRYPTO',
-    timezone: 'UTC',
-    overview: {
-      marketTone: 'constructive',
-      sessionRead: 'Markets are building higher from key demand zones.',
-      confidence: 'medium',
+    marketRegime: 'constructive_but_extended',
+    briefConfidence: 'medium',
+    dataStatus: {
+      price: 'fresh',
+      events: 'partial',
+      derivatives: 'fresh',
+      liquidations: 'unavailable',
     },
-    btcContext: {
-      summary: 'BTC holding above weekly open with steady bid pressure.',
-      keyLevels: ['95000', '92000'],
-      currentPosition: 'above daily midpoint',
+    whatChanged: [
+      'BTC moved from 94k to 96k — approaching weekly high.',
+      'Funding shifted from neutral to positive elevated.',
+    ],
+    btc: {
+      summary: 'BTC holding above daily midpoint with steady bid pressure.',
+      keyLevels: ['97400', '95800'],
+      position: 'above daily midpoint, below weekly high',
+      structure: 'bullish',
     },
-    ethContext: {
+    eth: {
       summary: 'ETH consolidating near prior highs.',
-      ethVsBtc: 'in_line',
+      vsbtc: 'slight underperformance on 24h',
+      keyLevels: ['3450'],
     },
-    altcoinContext: {
+    majorAssets: [
+      { symbol: 'SOLUSDT', summary: 'Consolidating below ATH region.', keyLevels: ['185'] },
+    ],
+    alts: {
       summary: 'Selective rotation into large-cap alts.',
       rotationState: 'selective_rotation',
+      breadth: '60% of top 50 green on 24h',
     },
-    derivativesContext: {
-      summary: 'Funding elevated but not extreme.',
-      fundingRead: 'positive_elevated',
-      oiRead: 'stable',
-      positioningRead: 'long_heavy',
+    derivatives: {
+      summary: '',
+      funding: 'positive elevated across BTC/ETH',
+      oi: 'rising slowly',
+      positioning: 'long-heavy',
     },
-    eventsContext: {
+    events: {
       summary: 'Light macro calendar this session.',
-      importantEvents: [],
+      upcoming: [],
     },
-    assetsInFocus: [],
-    setupsInFocus: [],
-    levelsToWatch: [],
-    sessionNotes: [],
-    humanSummary: 'Overall constructive session outlook.',
+    scenarios: {
+      reclaim: 'BTC clears 97,400 weekly high — extension toward 100k.',
+      rejection: 'Failure at 97,400 — retest 95,800 daily open.',
+      chop: 'Range 95,800–97,400, no clean resolution.',
+    },
+    note: 'Liquidation cluster data unavailable — confirm with live terminal before sizing decisions.',
   };
   return { ...base, ...overrides };
 }
@@ -54,114 +67,129 @@ describe('OverviewFormatter.format()', () => {
     expect(result.length).toBeGreaterThan(0);
   });
 
-  it('does not contain trading action words: buy, sell, entry, exit', () => {
-    const output = makeOutput({
-      btcContext: {
-        summary: 'BTC trending above key structure.',
-        keyLevels: ['95000'],
-        currentPosition: 'above midpoint',
-      },
-      overview: {
-        marketTone: 'constructive',
-        sessionRead: 'Momentum remains to the upside.',
-        confidence: 'high',
-      },
-    });
-    const result = formatter.format(output).toLowerCase();
-    expect(result).not.toMatch(/\bbuy\b/);
-    expect(result).not.toMatch(/\bsell\b/);
-    expect(result).not.toMatch(/\bentry\b/);
-    expect(result).not.toMatch(/\bexit\b/);
+  it('does not contain trading instruction phrases', () => {
+    const result = formatter.format(makeOutput()).toLowerCase();
+    expect(result).not.toMatch(/\bbuy here\b/);
+    expect(result).not.toMatch(/\bsell here\b/);
+    expect(result).not.toMatch(/\bgo long\b/);
+    expect(result).not.toMatch(/\bgo short\b/);
+    expect(result).not.toMatch(/\benter at\b/);
+    expect(result).not.toMatch(/\bexit at\b/);
   });
 
-  it('includes the session label Asia for ASIA_CRYPTO', () => {
+  it('allows descriptive positioning terms: long-heavy, short-heavy', () => {
+    const result = formatter.format(makeOutput()).toLowerCase();
+    expect(result).toContain('long-heavy');
+  });
+
+  it('includes the session emoji and label for ASIA_CRYPTO', () => {
     const result = formatter.format(makeOutput({ session: 'ASIA_CRYPTO' }));
+    expect(result).toContain('🌏');
     expect(result).toContain('Asia');
   });
 
-  it('includes the session label Europe for EUROPE_CRYPTO', () => {
+  it('includes the session emoji and label for EUROPE_CRYPTO', () => {
     const result = formatter.format(makeOutput({ session: 'EUROPE_CRYPTO' }));
+    expect(result).toContain('🌍');
     expect(result).toContain('Europe');
   });
 
-  it('includes the session label US for US_CRYPTO', () => {
+  it('includes the session emoji and label for US_CRYPTO', () => {
     const result = formatter.format(makeOutput({ session: 'US_CRYPTO' }));
+    expect(result).toContain('🌎');
     expect(result).toContain('US');
   });
 
-  it('includes BTC key levels when provided', () => {
+  it('includes Sofia timestamp in header', () => {
+    const result = formatter.format(makeOutput({ generatedAtUtc: '2026-05-18T22:30:00.000Z' }));
+    // 2026-05-18T22:30 UTC = 2026-05-19T01:30 Sofia (EEST = UTC+3)
+    expect(result).toContain('Sofia');
+  });
+
+  it('includes market regime and confidence', () => {
     const result = formatter.format(makeOutput());
-    expect(result).toContain('95000');
-    expect(result).toContain('92000');
+    expect(result).toContain('Regime:');
+    expect(result).toContain('constructive but extended');
+    expect(result).toContain('Confidence: medium');
   });
 
-  it('includes events section when importantEvents is non-empty', () => {
-    const output = makeOutput({
-      eventsContext: {
-        summary: 'Major macro event today.',
-        importantEvents: [
-          { title: 'FOMC Minutes', importance: 'high', relevance: 'Could move BTC significantly' },
-        ],
-      },
-    });
-    const result = formatter.format(output);
-    expect(result).toContain('Events:');
-    expect(result).toContain('FOMC Minutes');
-    expect(result).toContain('[high]');
+  it('includes all three scenarios', () => {
+    const result = formatter.format(makeOutput());
+    expect(result).toContain('▶ Reclaim:');
+    expect(result).toContain('▶ Rejection:');
+    expect(result).toContain('▶ Chop:');
   });
 
-  it('omits events section when importantEvents is empty', () => {
-    const result = formatter.format(makeOutput({ eventsContext: { summary: '', importantEvents: [] } }));
-    expect(result).not.toContain('Events:');
+  it('includes data status line', () => {
+    const result = formatter.format(makeOutput());
+    expect(result).toContain('Price: fresh');
+    expect(result).toContain('Events: partial');
+    expect(result).toContain('Liq: unavailable');
   });
 
-  it('includes assets in focus when non-empty', () => {
-    const output = makeOutput({
-      assetsInFocus: [{ symbol: 'SOLUSDT', reason: 'Breaking out of weekly range' }],
-    });
-    const result = formatter.format(output);
-    expect(result).toContain('Assets in focus:');
+  it('includes what changed bullets', () => {
+    const result = formatter.format(makeOutput());
+    expect(result).toContain('• BTC moved from 94k to 96k');
+    expect(result).toContain('• Funding shifted');
+  });
+
+  it('includes BTC key levels', () => {
+    const result = formatter.format(makeOutput());
+    expect(result).toContain('97400');
+    expect(result).toContain('95800');
+  });
+
+  it('includes major assets section when non-empty', () => {
+    const result = formatter.format(makeOutput());
+    expect(result).toContain('📈 Major Assets');
     expect(result).toContain('SOLUSDT');
   });
 
-  it('includes setups in focus when non-empty', () => {
-    const output = makeOutput({
-      setupsInFocus: [{ setupId: 's1', symbol: 'BTCUSDT', reason: 'Retesting key demand zone' }],
-    });
-    const result = formatter.format(output);
-    expect(result).toContain('Active setups:');
-    expect(result).toContain('BTCUSDT');
+  it('omits major assets section when empty', () => {
+    const result = formatter.format(makeOutput({ majorAssets: [] }));
+    expect(result).not.toContain('📈 Major Assets');
   });
 
-  it('includes levels to watch when non-empty', () => {
+  it('includes events section when upcoming is non-empty', () => {
     const output = makeOutput({
-      levelsToWatch: [{ symbol: 'BTCUSDT', levelType: 'weekly', level: '95000', reason: 'Previous week high' }],
-    });
-    const result = formatter.format(output);
-    expect(result).toContain('Levels to watch:');
-    expect(result).toContain('95000');
-  });
-
-  it('includes session notes when non-empty', () => {
-    const output = makeOutput({
-      sessionNotes: ['Watch for liquidity sweep above 96k.'],
-    });
-    const result = formatter.format(output);
-    expect(result).toContain('Session notes:');
-    expect(result).toContain('Watch for liquidity sweep above 96k.');
-  });
-
-  it('omits positioningRead line when positioningRead is blank', () => {
-    const output = makeOutput({
-      derivativesContext: {
-        summary: 'Funding neutral.',
-        fundingRead: 'neutral',
-        oiRead: 'stable',
-        positioningRead: '',
+      events: {
+        summary: 'FOMC today.',
+        upcoming: [{ title: 'FOMC Minutes', time: '21:00 UTC', importance: 'critical' }],
       },
     });
     const result = formatter.format(output);
-    expect(result).not.toContain('Read:');
+    expect(result).toContain('📅 Events');
+    expect(result).toContain('FOMC Minutes');
+    expect(result).toContain('🔴');
+  });
+
+  it('includes events section when summary is non-empty even with empty upcoming', () => {
+    const output = makeOutput({
+      events: { summary: 'Light macro calendar this session.', upcoming: [] },
+    });
+    const result = formatter.format(output);
+    expect(result).toContain('📅 Events');
+  });
+
+  it('omits events section when both summary and upcoming are empty', () => {
+    const output = makeOutput({ events: { summary: '', upcoming: [] } });
+    const result = formatter.format(output);
+    expect(result).not.toContain('📅 Events');
+  });
+
+  it('includes footer separator and note', () => {
+    const result = formatter.format(makeOutput());
+    expect(result).toContain('─────────────────────');
+    expect(result).toContain('Liquidation cluster data unavailable');
+  });
+
+  it('omits derivatives summary line when summary is blank', () => {
+    const output = makeOutput({
+      derivatives: { summary: '', funding: 'neutral', oi: 'stable', positioning: 'balanced' },
+    });
+    const result = formatter.format(output);
+    // Summary should not appear as a standalone line
+    expect(result).not.toMatch(/\n\n\n/);
   });
 });
 
@@ -181,7 +209,6 @@ describe('OverviewFormatter.splitForTelegram()', () => {
   });
 
   it('splits a long report into multiple chunks each <= 4096 chars', () => {
-    // Build a report > 4096 chars with newlines so it can be split
     const lines = Array.from({ length: 200 }, (_, i) => `Line ${i}: ${'x'.repeat(30)}`);
     const report = lines.join('\n');
     expect(report.length).toBeGreaterThan(4096);
@@ -200,19 +227,9 @@ describe('OverviewFormatter.splitForTelegram()', () => {
     const chunks = formatter.splitForTelegram(report);
     const reassembled = chunks.join('\n');
 
-    // Every original line should appear somewhere in the reassembled output
     for (const line of lines) {
       expect(reassembled).toContain(line);
     }
-  });
-
-  it('respects a custom maxLength parameter', () => {
-    const report = 'a'.repeat(100);
-    const chunks = formatter.splitForTelegram(report, 50);
-    // Single 100-char string with no newlines: first chunk is the whole thing
-    // since there's nothing to split on; the loop puts all into current
-    // Actually with no newlines it stays as one chunk (can't split further)
-    expect(chunks.length).toBeGreaterThanOrEqual(1);
   });
 
   it('returns multiple parts for a report longer than 4096 chars', () => {

@@ -1,74 +1,83 @@
 import { z } from 'zod';
 
-export const OverviewOutputSchema = z.object({
-  reportId: z.string(),
-  createdAt: z.string(),
-  session: z.enum(['ASIA_CRYPTO', 'EUROPE_CRYPTO', 'US_CRYPTO']),
-  timezone: z.string(),
+const DataStatusValueSchema = z.enum(['fresh', 'stale', 'partial', 'failed', 'unavailable']);
 
-  overview: z.object({
-    marketTone: z.enum([
-      'constructive', 'constructive_but_extended', 'neutral',
-      'mixed', 'weak', 'volatile', 'unknown',
-    ]),
-    sessionRead: z.string(),
-    confidence: z.enum(['low', 'medium', 'high']),
+export const OverviewOutputSchema = z.object({
+  briefId: z.string(),
+  generatedAtUtc: z.string(),
+  session: z.enum(['ASIA_CRYPTO', 'EUROPE_CRYPTO', 'US_CRYPTO']),
+
+  marketRegime: z.enum([
+    'risk_on_expansion',
+    'constructive_but_extended',
+    'defensive_range_bound',
+    'range_compression',
+    'long_heavy_near_resistance',
+    'short_heavy_near_support',
+    'risk_off',
+    'event_driven',
+    'mixed',
+    'unknown',
+  ]),
+  briefConfidence: z.enum(['low', 'medium', 'high']),
+
+  dataStatus: z.object({
+    price: DataStatusValueSchema,
+    events: DataStatusValueSchema,
+    derivatives: DataStatusValueSchema,
+    liquidations: DataStatusValueSchema,
   }),
 
-  btcContext: z.object({
+  whatChanged: z.array(z.string()).min(1).max(8),
+
+  btc: z.object({
     summary: z.string(),
     keyLevels: z.array(z.string()),
-    currentPosition: z.string(),
+    position: z.string(),
+    structure: z.enum(['bullish', 'bearish', 'range', 'transition', 'unknown']),
   }),
 
-  ethContext: z.object({
+  eth: z.object({
     summary: z.string(),
-    ethVsBtc: z.string(),
+    vsbtc: z.string(),
+    keyLevels: z.array(z.string()),
   }),
 
-  altcoinContext: z.object({
+  majorAssets: z.array(z.object({
+    symbol: z.string(),
     summary: z.string(),
-    rotationState: z.enum([
-      'broad_rotation', 'selective_rotation', 'no_rotation', 'weak', 'unknown',
-    ]),
+    keyLevels: z.array(z.string()),
+  })),
+
+  alts: z.object({
+    summary: z.string(),
+    rotationState: z.enum(['broad_rotation', 'selective_rotation', 'no_rotation', 'weak', 'unknown']),
+    breadth: z.string(),
   }),
 
-  derivativesContext: z.object({
+  derivatives: z.object({
     summary: z.string(),
-    fundingRead: z.string(),
-    oiRead: z.string(),
-    positioningRead: z.string(),
+    funding: z.string(),
+    oi: z.string(),
+    positioning: z.string(),
   }),
 
-  eventsContext: z.object({
+  events: z.object({
     summary: z.string(),
-    importantEvents: z.array(z.object({
+    upcoming: z.array(z.object({
       title: z.string(),
-      importance: z.enum(['critical', 'high', 'medium']),
-      relevance: z.string(),
+      time: z.string(),
+      importance: z.enum(['critical', 'high', 'medium', 'low']),
     })),
   }),
 
-  assetsInFocus: z.array(z.object({
-    symbol: z.string(),
-    reason: z.string(),
-  })),
+  scenarios: z.object({
+    reclaim: z.string(),
+    rejection: z.string(),
+    chop: z.string(),
+  }),
 
-  setupsInFocus: z.array(z.object({
-    setupId: z.string(),
-    symbol: z.string(),
-    reason: z.string(),
-  })),
-
-  levelsToWatch: z.array(z.object({
-    symbol: z.string(),
-    levelType: z.enum(['weekly', 'daily', '4h', 'session']),
-    level: z.string(),
-    reason: z.string(),
-  })),
-
-  sessionNotes: z.array(z.string()),
-  humanSummary: z.string(),
+  note: z.string(),
 });
 
 export type OverviewOutput = z.infer<typeof OverviewOutputSchema>;

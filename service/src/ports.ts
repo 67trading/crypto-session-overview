@@ -123,44 +123,59 @@ export type OverviewInput = {
   dataQuality: DataQualityInfo;
 };
 
+export type DataStatusValue = 'fresh' | 'stale' | 'partial' | 'failed' | 'unavailable';
+
+export type MarketRegime =
+  | 'risk_on_expansion' | 'constructive_but_extended' | 'defensive_range_bound'
+  | 'range_compression' | 'long_heavy_near_resistance' | 'short_heavy_near_support'
+  | 'risk_off' | 'event_driven' | 'mixed' | 'unknown';
+
 export type OverviewOutput = {
-  reportId: string;
-  createdAt: string;
+  briefId: string;
+  generatedAtUtc: string;
   session: CryptoSession;
-  timezone: string;
-  overview: {
-    marketTone:
-      | 'constructive' | 'constructive_but_extended' | 'neutral'
-      | 'mixed' | 'weak' | 'volatile' | 'unknown';
-    sessionRead: string;
-    confidence: 'low' | 'medium' | 'high';
+  marketRegime: MarketRegime;
+  briefConfidence: 'low' | 'medium' | 'high';
+  dataStatus: {
+    price: DataStatusValue;
+    events: DataStatusValue;
+    derivatives: DataStatusValue;
+    liquidations: DataStatusValue;
   };
-  btcContext: { summary: string; keyLevels: string[]; currentPosition: string };
-  ethContext: { summary: string; ethVsBtc: string };
-  altcoinContext: {
+  whatChanged: string[];
+  btc: {
+    summary: string;
+    keyLevels: string[];
+    position: string;
+    structure: 'bullish' | 'bearish' | 'range' | 'transition' | 'unknown';
+  };
+  eth: {
+    summary: string;
+    vsbtc: string;
+    keyLevels: string[];
+  };
+  majorAssets: { symbol: string; summary: string; keyLevels: string[] }[];
+  alts: {
     summary: string;
     rotationState: 'broad_rotation' | 'selective_rotation' | 'no_rotation' | 'weak' | 'unknown';
+    breadth: string;
   };
-  derivativesContext: {
+  derivatives: {
     summary: string;
-    fundingRead: string;
-    oiRead: string;
-    positioningRead: string;
+    funding: string;
+    oi: string;
+    positioning: string;
   };
-  eventsContext: {
+  events: {
     summary: string;
-    importantEvents: { title: string; importance: 'critical' | 'high' | 'medium'; relevance: string }[];
+    upcoming: { title: string; time: string; importance: 'critical' | 'high' | 'medium' | 'low' }[];
   };
-  assetsInFocus: { symbol: string; reason: string }[];
-  setupsInFocus: { setupId: string; symbol: string; reason: string }[];
-  levelsToWatch: {
-    symbol: string;
-    levelType: 'weekly' | 'daily' | '4h' | 'session';
-    level: string;
-    reason: string;
-  }[];
-  sessionNotes: string[];
-  humanSummary: string;
+  scenarios: {
+    reclaim: string;
+    rejection: string;
+    chop: string;
+  };
+  note: string;
 };
 
 // ─── Collection ports ──────────────────────────────────────────────────────────
