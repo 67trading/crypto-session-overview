@@ -9,12 +9,6 @@ type ScheduleEntry = {
   cronExpr: string;
 };
 
-const SCHEDULES: ScheduleEntry[] = [
-  { session: 'ASIA_CRYPTO',    cronExpr: '0 8 * * *'  },
-  { session: 'EUROPE_CRYPTO',  cronExpr: '0 16 * * *' },
-  { session: 'US_CRYPTO',      cronExpr: '0 21 * * *' },
-];
-
 const LOCK_TTL_MS = 30 * 60 * 1000; // 30 minutes — covers a slow run
 
 const inMemoryLocks = new Set<string>();
@@ -55,7 +49,13 @@ export function startScheduler(
 ): void {
   const prisma = new PrismaClient({ datasources: { db: { url: config.database.url } } });
 
-  for (const { session, cronExpr } of SCHEDULES) {
+  const schedules: ScheduleEntry[] = [
+    { session: 'ASIA_CRYPTO',   cronExpr: config.scheduler.cronAsia   },
+    { session: 'EUROPE_CRYPTO', cronExpr: config.scheduler.cronEurope },
+    { session: 'US_CRYPTO',     cronExpr: config.scheduler.cronUs     },
+  ];
+
+  for (const { session, cronExpr } of schedules) {
     cron.schedule(cronExpr, async () => {
       const lockId = `scheduler-${session}`;
       const acquired = await acquireLock(prisma, lockId);
@@ -77,7 +77,7 @@ export function startScheduler(
       } finally {
         await releaseLock(prisma, lockId);
       }
-    }, { timezone: 'UTC' });
+    }, { timezone: config.scheduler.timezone });
 
     logger.info({ session, cronExpr }, 'Registered session overview cron');
   }

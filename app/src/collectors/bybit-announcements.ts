@@ -48,12 +48,8 @@ export class BybitAnnouncementsCollector implements EventCollector {
   constructor(private readonly client: BybitHttpClient) {}
 
   async collect(_session: CryptoSession): Promise<NormalizedEvent[]> {
-    try {
-      const announcements = await this.client.getAnnouncements(20);
-      return announcements.map((a) => this.mapToEvent(a));
-    } catch {
-      return [];
-    }
+    const announcements = await this.client.getAnnouncements(20);
+    return announcements.map((a) => this.mapToEvent(a));
   }
 
   private mapToEvent(announcement: BybitAnnouncement): NormalizedEvent {

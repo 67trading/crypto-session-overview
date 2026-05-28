@@ -1,8 +1,16 @@
 import type { SessionOverviewDeps } from './service-types.js';
 import type { OverviewRunOptions, OverviewRunResult } from './service-types.js';
-import type { NormalizedEvent, CollectorRunRecord, DataQualityInfo } from './ports.js';
+import type { NormalizedEvent, CollectorRunRecord, DataQualityInfo, HtfLevelsSnapshot } from './ports.js';
 import { OverviewInputBuilder } from './overview-input-builder.js';
 import { OverviewFormatter } from './overview-formatter.js';
+import {
+  computeWeeklyLevels,
+  computeDailyLevels,
+  computeFourHourLevels,
+  buildSessionContext,
+  getPreviousSession,
+  getSessionBoundaryForDate,
+} from '../../core/src/index.js';
 
 const DEFAULT_TOKEN_BUDGET = 2000;
 
@@ -66,15 +74,32 @@ export class OverviewRunner {
       // 4. Load active setups (optional)
       const activeSetups = await this.deps.setupLoader?.loadActive(allSymbols) ?? [];
 
-      // 5. Build levels snapshot from market snapshots
-      const levels: Record<string, { weekly: unknown; daily: unknown; fourHour: unknown }> = {};
+      // 5. Build levels snapshot from market snapshots using computed HTF levels
+      const levels: Record<string, HtfLevelsSnapshot> = {};
       for (const snapshot of marketSnapshots) {
         levels[snapshot.symbol] = {
-          weekly: snapshot.candles.weekly.at(-2) ?? null,
-          daily: snapshot.candles.daily.at(-2) ?? null,
-          fourHour: snapshot.candles.fourHour.at(-1) ?? null,
+          weekly: snapshot.candles.weekly.length > 0
+            ? computeWeeklyLevels(snapshot.latestPrice, snapshot.candles.weekly)
+            : null,
+          daily: snapshot.candles.daily.length > 0
+            ? computeDailyLevels(snapshot.latestPrice, snapshot.candles.daily)
+            : null,
+          fourHour: snapshot.candles.fourHour.length > 0
+            ? computeFourHourLevels(snapshot.latestPrice, snapshot.candles.fourHour)
+            : null,
         };
       }
+
+      // 5b. Build session context using BTC as the reference instrument
+      const btcSnapshot = marketSnapshots.find((s) => s.symbol === 'BTCUSDT');
+      const sessionCtx = btcSnapshot !== undefined
+        ? buildSessionContext(
+            session,
+            btcSnapshot.latestPrice,
+            btcSnapshot.candles.fourHour,
+            getSessionBoundaryForDate(getPreviousSession(session), new Date()),
+          )
+        : null;
 
       // 6. Build data quality summary
       const failedSources = collectorRuns
@@ -99,8 +124,8 @@ export class OverviewRunner {
         derivativesContext,
         events: allEvents,
         activeSetups,
-        sessionContext: null,
-        levels: levels as Record<string, { weekly: null; daily: null; fourHour: null }>,
+        sessionContext: sessionCtx,
+        levels,
         tokenBudget: options.tokenBudget ?? DEFAULT_TOKEN_BUDGET,
         dataQuality,
       });
@@ -115,7 +140,6 @@ export class OverviewRunner {
       ]);
 
       // 10. Generate overview
-      const llmT0 = Date.now();
       const llmResult = await this.deps.llmClient.generateOverview(input);
       const output = llmResult.output;
 
@@ -131,7 +155,7 @@ export class OverviewRunner {
         humanReport,
         inputSnapshotId,
         telegramPostIds,
-        model: llmResult.usage !== undefined ? undefined : undefined,
+        model: this.deps.llmClient.modelName,
       });
 
       // 13. Save LLM usage if available
@@ -163,15 +187,8 @@ export class OverviewRunner {
               session,
             });
           }
-          // Update overview with post IDs
-          await repository.saveOverview({
-            session,
-            status: 'SUCCESS',
-            outputJson: output,
-            humanReport,
-            inputSnapshotId,
-            telegramPostIds,
-          });
+          // Update existing overview row with post IDs (no duplicate insert)
+          await repository.updateOverviewTelegramPosts(overviewId, telegramPostIds);
         } catch (err) {
           logger.warn({ err }, 'Publishing failed — overview saved but not published');
         }

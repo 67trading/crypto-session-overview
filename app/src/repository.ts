@@ -77,6 +77,13 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
     return row.id;
   }
 
+  async updateOverviewTelegramPosts(id: string, postIds: string[]): Promise<void> {
+    await this.prisma.sessionOverview.update({
+      where: { id },
+      data: { telegramPostIds: JSON.stringify(postIds) },
+    });
+  }
+
   async getLatestOverview(session: CryptoSession): Promise<OverviewRecord | null> {
     const row = await this.prisma.sessionOverview.findFirst({
       where: { session },

@@ -9,9 +9,10 @@ const SYSTEM_PROMPT = `You are a professional crypto market analyst producing se
 
 STRICT RULES — violation causes the response to be rejected:
 1. Return ONLY valid JSON. No markdown code blocks, no explanations, no text outside JSON.
-2. FORBIDDEN words in any field: "buy", "sell", "entry", "exit", "long", "short", "position", "trade".
-   - sessionRead, humanSummary, and all summary fields must not contain trade instructions.
-   - You describe market conditions, not trading actions.
+2. FORBIDDEN trading-instruction phrases: "buy here", "sell here", "go long", "go short", "enter at",
+   "exit at", "take a position", "place a trade". Descriptive terms like "long-heavy", "short-heavy",
+   "positioning", "long exposure" are ALLOWED when describing market conditions. Describe what the market
+   IS doing, not what a trader SHOULD do.
 3. Use ONLY data provided in the input. Do not hallucinate levels, events, or prices.
 4. If collectors are marked failed in dataQuality, say "data unavailable" — do not invent events.
 5. Timeframes: only Weekly, Daily, 4H, Session. Never reference 1H, 15m, 5m.
@@ -54,6 +55,10 @@ export class AnthropicLlmClient implements LlmOverviewClient {
     private readonly apiKey: string,
     private readonly model: string,
   ) {}
+
+  get modelName(): string {
+    return this.model;
+  }
 
   async generateOverview(input: OverviewInput): Promise<LlmGenerateResult> {
     let lastError: Error | undefined;

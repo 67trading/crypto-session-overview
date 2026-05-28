@@ -26,6 +26,10 @@ export type AppConfig = {
   };
   scheduler: {
     enabled: boolean;
+    timezone: string;
+    cronAsia: string;
+    cronEurope: string;
+    cronUs: string;
   };
 };
 
@@ -98,6 +102,10 @@ export function loadConfig(): AppConfig {
     },
     scheduler: {
       enabled: optionalEnv('SCHEDULER_ENABLED', 'true') === 'true',
+      timezone: optionalEnv('SCHEDULER_TIMEZONE', 'Europe/Sofia'),
+      cronAsia: optionalEnv('SCHEDULER_CRON_ASIA', '30 1 * * *'),
+      cronEurope: optionalEnv('SCHEDULER_CRON_EUROPE', '30 8 * * *'),
+      cronUs: optionalEnv('SCHEDULER_CRON_US', '0 15 * * *'),
     },
   };
 }

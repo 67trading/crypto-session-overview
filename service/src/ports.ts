@@ -207,6 +207,7 @@ export type LlmGenerateResult = {
 };
 
 export interface LlmOverviewClient {
+  readonly modelName: string;
   generateOverview(input: OverviewInput): Promise<LlmGenerateResult>;
 }
 
@@ -277,6 +278,7 @@ export interface SessionOverviewRepository {
   saveCollectedEvents(events: NormalizedEvent[]): Promise<void>;
   saveCollectorRun(run: CollectorRunRecord): Promise<void>;
   saveOverview(record: OverviewRecord): Promise<string>;
+  updateOverviewTelegramPosts(id: string, postIds: string[]): Promise<void>;
   getLatestOverview(session: CryptoSession): Promise<OverviewRecord | null>;
   listOverviews(filters: OverviewFilters): Promise<OverviewRecord[]>;
   saveTelegramPost(post: TelegramPostRecord): Promise<string>;
