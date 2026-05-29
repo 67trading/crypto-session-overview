@@ -207,6 +207,10 @@ export type MacroRatesContext = {
   dxy?: number;
   pceYoY?: number;
   gdpGrowthQoQ?: number;
+  ecbDepositRate?: number;
+  ecbMainRate?: number;
+  eurozoneHicpYoY?: number;
+  bojPolicyRate?: number;
   dataDate?: string;
 };
 

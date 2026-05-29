@@ -14,6 +14,9 @@ import { FarsideEtfCollector } from './collectors/farside-etf.collector.js';
 import { CoinGeckoBreadthCollector } from './collectors/coingecko-breadth.collector.js';
 import { FredRatesCollector } from './collectors/fred-rates.collector.js';
 import { BeaGdpCollector } from './collectors/bea-gdp.collector.js';
+import { EcbRatesCollector } from './collectors/ecb-rates.collector.js';
+import { EurostatInflationCollector } from './collectors/eurostat-inflation.collector.js';
+import { BojRatesCollector } from './collectors/boj-rates.collector.js';
 import { DefiLlamaStablecoinsCollector } from './collectors/defillama-stablecoins.collector.js';
 import { DefiLlamaChainsCollector } from './collectors/defillama-chains.collector.js';
 import { AnthropicLlmClient } from './llm-client.js';
@@ -70,9 +73,14 @@ export function wire(config: AppConfig, logger: LoggerLike): SessionOverviewServ
     contextCollectorEntry(new DeribitOptionsCollector(), mergeOptionsContext),
     contextCollectorEntry(new FarsideEtfCollector(), mergeEtfFlowContext),
     contextCollectorEntry(new CoinGeckoBreadthCollector(), mergeBreadthContext),
+    // Europe/Asia macro — public APIs, no key needed
+    contextCollectorEntry(new EcbRatesCollector(), mergeMacroRatesContext),
+    contextCollectorEntry(new EurostatInflationCollector(), mergeMacroRatesContext),
   ];
   if (config.fred !== undefined) {
     contextCollectors.push(contextCollectorEntry(new FredRatesCollector(config.fred.apiKey), mergeMacroRatesContext));
+    // BoJ rate via FRED (reuses FRED key)
+    contextCollectors.push(contextCollectorEntry(new BojRatesCollector(config.fred.apiKey), mergeMacroRatesContext));
   }
   if (config.bea !== undefined) {
     contextCollectors.push(contextCollectorEntry(new BeaGdpCollector(config.bea.apiKey), mergeMacroRatesContext));
