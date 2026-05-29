@@ -121,6 +121,14 @@ export type DerivativesNarrativeSummary = {
   positioning: string;
 };
 
+export type CrossMarketSummary = {
+  ethBtcTrendLabel: string;
+  dominanceSignal: 'rising' | 'falling' | 'mixed' | 'unknown';
+  dominanceLabel: string;
+  topOutperformers: string[];
+  topUnderperformers: string[];
+};
+
 export type PrecomputedEvents = {
   upcomingEvents: {
     title: string;
@@ -180,6 +188,7 @@ export type OverviewInput = {
   altsBreadth?: AltsBreadthSummary;
   derivativesNarrative?: DerivativesNarrativeSummary;
   precomputedEvents?: PrecomputedEvents;
+  crossMarket?: CrossMarketSummary;
 };
 
 export type DataStatusValue = 'fresh' | 'stale' | 'partial' | 'failed' | 'unavailable';

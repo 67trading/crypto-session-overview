@@ -28,6 +28,9 @@ STRICT RULES — violation causes the response to be rejected:
 4e. events.upcoming is pre-computed and deduplicated — copy the list VERBATIM from
     input.precomputedEvents.upcomingEvents if present and non-empty. Do not add, remove, or
     reorder entries. Write events.summary as a 1-2 sentence synthesis of the upcoming list.
+4f. eth.vsbtc is pre-computed — copy it VERBATIM from input.crossMarket.ethBtcTrendLabel if
+    present and not "data unavailable". Use input.crossMarket.dominanceLabel and
+    topOutperformers/topUnderperformers as context for the eth.summary and majorAssets sections.
 5. If a source status is "failed" or "unavailable", write "data unavailable" in that section's
    summary — do not invent data.
 6. Timeframes: only Weekly, Daily, 4H, Session. Never reference 1H, 15m, 5m.

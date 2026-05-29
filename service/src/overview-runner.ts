@@ -9,6 +9,7 @@ import { classifyMarketRegime } from './market-regime-classifier.js';
 import { analyzeAltsBreadth } from './alts-breadth-analyzer.js';
 import { buildDerivativesNarrative } from './derivatives-narrative-builder.js';
 import { preprocessEvents } from './events-preprocessor.js';
+import { analyzeCrossMarket } from './cross-market-analyzer.js';
 import {
   computeWeeklyLevels,
   computeDailyLevels,
@@ -120,6 +121,9 @@ export class OverviewRunner {
       // 5d. Build derivatives narrative from status enums
       const derivativesNarrative = buildDerivativesNarrative(derivativesContext);
 
+      // 5e. Cross-market analysis — ETH/BTC ratio trend, dominance signal, top movers
+      const crossMarket = analyzeCrossMarket(marketSnapshots);
+
       // 6. Build data quality summary and pre-compute source health
       const failedSources = collectorRuns
         .filter((r) => r.status === 'FAILED')
@@ -200,6 +204,7 @@ export class OverviewRunner {
         altsBreadth,
         derivativesNarrative,
         precomputedEvents,
+        crossMarket,
       });
 
       // 8. Save input snapshot
@@ -237,6 +242,12 @@ export class OverviewRunner {
           positioning: derivativesNarrative.positioning !== 'data unavailable'
             ? derivativesNarrative.positioning
             : llmResult.output.derivatives.positioning,
+        },
+        eth: {
+          ...llmResult.output.eth,
+          vsbtc: crossMarket.ethBtcTrendLabel !== 'data unavailable'
+            ? crossMarket.ethBtcTrendLabel
+            : llmResult.output.eth.vsbtc,
         },
         events: {
           ...llmResult.output.events,

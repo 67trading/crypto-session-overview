@@ -26,6 +26,7 @@ export type {
   AltsBreadthSummary,
   DerivativesNarrativeSummary,
   PrecomputedEvents,
+  CrossMarketSummary,
   CollectorRunRecord,
   OverviewRecord,
   OverviewFilters,
@@ -44,6 +45,7 @@ export type { RegimeClassifierInput } from './market-regime-classifier.js';
 export { analyzeAltsBreadth } from './alts-breadth-analyzer.js';
 export { buildDerivativesNarrative } from './derivatives-narrative-builder.js';
 export { preprocessEvents } from './events-preprocessor.js';
+export { analyzeCrossMarket } from './cross-market-analyzer.js';
 export type { SessionOverviewDeps, OverviewRunOptions, OverviewRunResult } from './service-types.js';
 export { OverviewInputBuilder } from './overview-input-builder.js';
 export { OverviewFormatter } from './overview-formatter.js';
