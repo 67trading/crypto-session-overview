@@ -12,6 +12,7 @@ import type {
   PrecomputedRegime,
   AltsBreadthSummary,
   DerivativesNarrativeSummary,
+  PrecomputedEvents,
 } from './ports.js';
 
 export class OverviewInputBuilder {
@@ -31,6 +32,7 @@ export class OverviewInputBuilder {
     precomputedRegime?: PrecomputedRegime;
     altsBreadth?: AltsBreadthSummary;
     derivativesNarrative?: DerivativesNarrativeSummary;
+    precomputedEvents?: PrecomputedEvents;
   }): OverviewInput {
     const btcSnapshot = params.marketSnapshots.find((s) => s.symbol === 'BTCUSDT');
     const ethSnapshot = params.marketSnapshots.find((s) => s.symbol === 'ETHUSDT');
@@ -70,6 +72,7 @@ export class OverviewInputBuilder {
       ...(params.precomputedRegime !== undefined ? { precomputedRegime: params.precomputedRegime } : {}),
       ...(params.altsBreadth !== undefined ? { altsBreadth: params.altsBreadth } : {}),
       ...(params.derivativesNarrative !== undefined ? { derivativesNarrative: params.derivativesNarrative } : {}),
+      ...(params.precomputedEvents !== undefined ? { precomputedEvents: params.precomputedEvents } : {}),
     };
 
     // Apply token budget: truncate events and setups if needed

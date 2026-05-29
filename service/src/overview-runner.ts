@@ -8,6 +8,7 @@ import { computeWhatChanged, firstBriefBullets } from './brief-diff-engine.js';
 import { classifyMarketRegime } from './market-regime-classifier.js';
 import { analyzeAltsBreadth } from './alts-breadth-analyzer.js';
 import { buildDerivativesNarrative } from './derivatives-narrative-builder.js';
+import { preprocessEvents } from './events-preprocessor.js';
 import {
   computeWeeklyLevels,
   computeDailyLevels,
@@ -79,6 +80,9 @@ export class OverviewRunner {
       for (const result of eventResults) {
         if (result.status === 'fulfilled') allEvents.push(...result.value);
       }
+
+      // 3b. Preprocess events — dedup by dedupeKey, filter to session, sort by importance+time
+      const { filteredEvents, precomputedEvents } = preprocessEvents(allEvents, session);
 
       // 4. Load active setups (optional)
       const activeSetups = await this.deps.setupLoader?.loadActive(allSymbols) ?? [];
@@ -175,7 +179,7 @@ export class OverviewRunner {
         btcFunding: btcDerivatives?.fundingStatus ?? 'unknown',
         btcOiStatus: btcDerivatives?.oiStatus ?? 'unknown',
         btcPositioning: btcDerivatives?.positioningStatus ?? 'unknown',
-        hasCriticalEvents: allEvents.some((e) => e.importance === 'critical'),
+        hasCriticalEvents: precomputedEvents.hasCritical,
         dataStatus,
       });
 
@@ -184,7 +188,7 @@ export class OverviewRunner {
         symbols,
         marketSnapshots,
         derivativesContext,
-        events: allEvents,
+        events: filteredEvents,
         activeSetups,
         sessionContext: sessionCtx,
         levels,
@@ -195,6 +199,7 @@ export class OverviewRunner {
         precomputedRegime,
         altsBreadth,
         derivativesNarrative,
+        precomputedEvents,
       });
 
       // 8. Save input snapshot
@@ -232,6 +237,12 @@ export class OverviewRunner {
           positioning: derivativesNarrative.positioning !== 'data unavailable'
             ? derivativesNarrative.positioning
             : llmResult.output.derivatives.positioning,
+        },
+        events: {
+          ...llmResult.output.events,
+          upcoming: precomputedEvents.upcomingEvents.length > 0
+            ? precomputedEvents.upcomingEvents
+            : llmResult.output.events.upcoming,
         },
         whatChanged: previousOutput !== null
           ? computeWhatChanged(previousOutput, llmResult.output)

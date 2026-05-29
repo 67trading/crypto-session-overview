@@ -25,6 +25,9 @@ STRICT RULES — violation causes the response to be rejected:
 4d. derivatives.funding, derivatives.oi, and derivatives.positioning are pre-computed — copy
     them VERBATIM from input.derivativesNarrative if present and not "data unavailable".
     Focus your derivatives.summary on synthesizing the overall read, not repeating sub-fields.
+4e. events.upcoming is pre-computed and deduplicated — copy the list VERBATIM from
+    input.precomputedEvents.upcomingEvents if present and non-empty. Do not add, remove, or
+    reorder entries. Write events.summary as a 1-2 sentence synthesis of the upcoming list.
 5. If a source status is "failed" or "unavailable", write "data unavailable" in that section's
    summary — do not invent data.
 6. Timeframes: only Weekly, Daily, 4H, Session. Never reference 1H, 15m, 5m.

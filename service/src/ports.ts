@@ -121,6 +121,17 @@ export type DerivativesNarrativeSummary = {
   positioning: string;
 };
 
+export type PrecomputedEvents = {
+  upcomingEvents: {
+    title: string;
+    time: string;
+    importance: 'critical' | 'high' | 'medium' | 'low';
+  }[];
+  totalDeduped: number;
+  sessionFiltered: number;
+  hasCritical: boolean;
+};
+
 export type PreviousBriefContext = {
   generatedAtUtc: string;
   marketRegime: MarketRegime;
@@ -168,6 +179,7 @@ export type OverviewInput = {
   precomputedRegime?: PrecomputedRegime;
   altsBreadth?: AltsBreadthSummary;
   derivativesNarrative?: DerivativesNarrativeSummary;
+  precomputedEvents?: PrecomputedEvents;
 };
 
 export type DataStatusValue = 'fresh' | 'stale' | 'partial' | 'failed' | 'unavailable';
