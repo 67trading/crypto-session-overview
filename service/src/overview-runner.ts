@@ -5,6 +5,7 @@ import { OverviewInputBuilder } from './overview-input-builder.js';
 import { OverviewFormatter } from './overview-formatter.js';
 import { computeDataStatus, buildSourceHealthSummary } from './source-health-evaluator.js';
 import { computeWhatChanged, firstBriefBullets } from './brief-diff-engine.js';
+import { checkOutputInvariants } from './output-invariants.js';
 import { classifyMarketRegime } from './market-regime-classifier.js';
 import { analyzeAltsBreadth } from './alts-breadth-analyzer.js';
 import { buildDerivativesNarrative } from './derivatives-narrative-builder.js';
@@ -329,6 +330,12 @@ export class OverviewRunner {
           ? computeWhatChanged(previousOutput, llmResult.output)
           : firstBriefBullets(),
       };
+
+      // 10b. Hard invariant sweep — log any violations as warnings (never throw)
+      const invariantViolations = checkOutputInvariants(output);
+      if (invariantViolations.length > 0) {
+        logger.warn({ session, violations: invariantViolations }, 'Output invariant violations detected');
+      }
 
       // 11. Format
       const humanReport = this.formatter.format(output);
