@@ -6,12 +6,14 @@ const UA = 'trader-agent/session-overview';
 
 const DATE_RE = /^\d{1,2}\/\d{1,2}\/\d{4}$/;
 
-function parseFarsideValue(raw: string): number | undefined {
-  const s = raw.trim().replace(/[()]/g, '-').replace(/,/g, '');
-  // Farside uses parentheses for negatives: (123.4) → -123.4
-  const adjusted = s.startsWith('-') && !s.startsWith('--') ? s : s.replace(/^-/, '-');
-  const v = parseFloat(adjusted);
-  return isNaN(v) ? undefined : v;
+function parseFarsideValue(raw: string): number | null {
+  const trimmed = raw.trim().replace(/,/g, '');
+  if (trimmed === '' || trimmed === '-' || trimmed === 'N/A') return null;
+  const isNegative = trimmed.startsWith('(') && trimmed.endsWith(')');
+  const numeric = trimmed.replace(/[()]/g, '');
+  const value = parseFloat(numeric);
+  if (isNaN(value)) return null;
+  return isNegative ? -value : value;
 }
 
 function extractCells(trHtml: string): string[] {
@@ -36,13 +38,13 @@ function latestDailyFlowMillions(html: string): number | undefined {
     if (cells.length < 2) continue;
     if (!DATE_RE.test(cells[0] ?? '')) continue;
     // Find last numeric cell (Total column)
-    const lastNumeric = cells.slice(1).reverse().find((c) => parseFarsideValue(c) !== undefined);
+    const lastNumeric = cells.slice(1).reverse().find((c) => parseFarsideValue(c) !== null);
     if (lastNumeric !== undefined) lastDataRow = cells;
   }
 
   if (lastDataRow === undefined) return undefined;
-  const lastNumeric = lastDataRow.slice(1).reverse().find((c) => parseFarsideValue(c) !== undefined);
-  return lastNumeric !== undefined ? parseFarsideValue(lastNumeric) : undefined;
+  const lastNumeric = lastDataRow.slice(1).reverse().find((c) => parseFarsideValue(c) !== null);
+  return lastNumeric !== undefined ? (parseFarsideValue(lastNumeric) ?? undefined) : undefined;
 }
 
 async function fetchFlow(url: string): Promise<number | undefined> {

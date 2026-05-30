@@ -3,7 +3,7 @@ import type { OverviewRunOptions, OverviewRunResult } from './service-types.js';
 import type { NormalizedEvent, CollectorRunRecord, DataQualityInfo, HtfLevelsSnapshot, PreviousBriefContext, CollectorRunContext } from './ports.js';
 import { OverviewInputBuilder } from './overview-input-builder.js';
 import { OverviewFormatter } from './overview-formatter.js';
-import { computeDataStatus, buildSourceHealthSummary } from './source-health-evaluator.js';
+import { computeDataStatus, buildSourceHealthSummary, type EnrichedCollectorQuality } from './source-health-evaluator.js';
 import { computeWhatChanged, firstBriefBullets } from './brief-diff-engine.js';
 import { checkOutputInvariants, hasHardViolations } from './output-invariants.js';
 import { classifyMarketRegime } from './market-regime-classifier.js';
@@ -62,6 +62,7 @@ export class OverviewRunner {
               status: 'SUCCESS',
               itemCount: events.length,
               durationMs: Date.now() - t0,
+              source: collector.sourceName,
             });
             return events;
           } catch (err) {
@@ -74,6 +75,7 @@ export class OverviewRunner {
               itemCount: 0,
               errorMessage: err instanceof Error ? err.message : String(err),
               durationMs: Date.now() - t0,
+              source: collector.sourceName,
             });
             return [];
           }
@@ -129,12 +131,16 @@ export class OverviewRunner {
       const failedSources = collectorRuns
         .filter((r) => r.status === 'FAILED')
         .map((r) => r.collectorName);
-      const collectorQuality = collectorRuns.map((r) => ({
+      const collectorQuality: EnrichedCollectorQuality[] = collectorRuns.map((r) => ({
         name: r.collectorName,
+        source: r.source ?? r.collectorName,
         status: r.status === 'SUCCESS' ? 'success' as const
           : r.status === 'SKIPPED' ? 'skipped' as const
           : 'failed' as const,
         itemCount: r.itemCount,
+        ...(r.durationMs !== undefined ? { durationMs: r.durationMs } : {}),
+        ...(r.dataFreshnessSeconds !== undefined ? { dataFreshnessSeconds: r.dataFreshnessSeconds } : {}),
+        ...(r.payloadHash !== undefined ? { payloadHash: r.payloadHash } : {}),
         ...(r.errorMessage !== undefined ? { error: r.errorMessage } : {}),
       }));
       const dataQuality: DataQualityInfo = {
@@ -243,6 +249,7 @@ export class OverviewRunner {
             itemCount: result.itemCount,
             ...(result.error !== undefined ? { errorMessage: result.error } : {}),
             durationMs: Date.now() - t0,
+            source: collector.sourceName,
           });
         } catch (err) {
           logger.warn({ collector: collector.sourceName, err }, 'Context collector failed');
@@ -254,19 +261,25 @@ export class OverviewRunner {
             itemCount: 0,
             errorMessage: err instanceof Error ? err.message : String(err),
             durationMs: Date.now() - t0,
+            source: collector.sourceName,
           });
         }
       }
 
       // Build source health summary across all collectors
-      const allCollectorQuality = [
+      const allCollectorQuality: EnrichedCollectorQuality[] = [
         ...collectorQuality,
-        ...contextRunRecords.map((r) => ({
+        ...contextRunRecords.map((r): EnrichedCollectorQuality => ({
           name: r.collectorName,
+          source: r.source ?? r.collectorName,
           status: r.status === 'SUCCESS' ? 'success' as const
+            : r.status === 'PARTIAL' ? 'partial' as const
             : r.status === 'SKIPPED' ? 'skipped' as const
             : 'failed' as const,
           itemCount: r.itemCount,
+          ...(r.durationMs !== undefined ? { durationMs: r.durationMs } : {}),
+          ...(r.dataFreshnessSeconds !== undefined ? { dataFreshnessSeconds: r.dataFreshnessSeconds } : {}),
+          ...(r.payloadHash !== undefined ? { payloadHash: r.payloadHash } : {}),
           ...(r.errorMessage !== undefined ? { error: r.errorMessage } : {}),
         })),
       ];

@@ -81,7 +81,8 @@ export class TokenUnlocksCollector implements EventCollector {
         const price = emission.token?.price ?? 0;
         const usdValue = tokenCount * price;
         if (tokenCount === 0) continue;
-        if (price > 0 && usdValue < 10_000_000) continue;
+        if (usdValue === 0) continue;
+        if (usdValue < 10_000_000) continue;
         const importance = importanceForUsd(usdValue);
         const relevanceScore = relevanceScoreForImportance(importance);
         const dedupeKey = `defillama-unlock-${emission.symbol}-${ev.timestamp}`;

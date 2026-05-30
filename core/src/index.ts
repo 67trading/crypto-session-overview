@@ -10,5 +10,5 @@ export { computeDedupeKey, deduplicateEvents } from './events/event-dedupe.js';
 export { computeRelevanceScore, filterByRelevance } from './events/event-relevance.js';
 export type { DerivativesContext, ActiveOverviewSetup, HtfLevelsSnapshot, OverviewInput } from './overview/overview-input.types.js';
 export { OverviewOutputSchema } from './overview/overview-output.schema.js';
-export type { OverviewOutput } from './overview/overview-output.schema.js';
+export type { OverviewOutput, MarketRegime, DataStatusValue, DataStatus } from './overview/overview-output.schema.js';
 export { estimateTokenCount, truncateToTokenBudget } from './overview/token-budget.js';

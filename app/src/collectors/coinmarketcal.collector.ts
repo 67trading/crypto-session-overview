@@ -84,13 +84,14 @@ export class CoinMarketCalCollector implements EventCollector {
   constructor(private readonly apiKey: string, private readonly coins?: string) {}
 
   async collect(session: CryptoSession): Promise<NormalizedEvent[]> {
-    const cacheKey = session;
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
+    const cacheKey = `${session}:${this.coins ?? 'all'}:${dateStr}`;
     const cached = cache.get(cacheKey);
     if (cached !== undefined && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
       return cached.data;
     }
 
-    const now = new Date();
     const end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     const params = new URLSearchParams({
       max: '50',

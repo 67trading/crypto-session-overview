@@ -48,6 +48,7 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         ...(e.scheduledTime !== undefined ? { scheduledTime: e.scheduledTime } : {}),
         importance: e.importance,
         confidence: e.confidence,
+        sessionRelevanceText: e.sessionRelevance.join(','),
       })),
     });
   }
@@ -64,6 +65,8 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         ...(run.durationMs !== undefined ? { durationMs: run.durationMs } : {}),
         ...(run.dataFreshnessSeconds !== undefined ? { dataFreshnessSeconds: run.dataFreshnessSeconds } : {}),
         ...(run.fallbackUsed !== undefined ? { fallbackUsed: run.fallbackUsed } : {}),
+        ...(run.source !== undefined ? { source: run.source } : {}),
+        ...(run.payloadHash !== undefined ? { payloadHash: run.payloadHash } : {}),
       },
     });
   }
@@ -89,6 +92,10 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         scenariosJson: JSON.stringify(output.scenarios),
         liquidityJson: JSON.stringify(output.liquidity ?? null),
         eventsJson: JSON.stringify(output.events ?? null),
+        scenarioMapJson: JSON.stringify(output.scenarios),
+        crossMarketJson: JSON.stringify((record as { crossMarket?: unknown }).crossMarket ?? null),
+        etfFlowJson: JSON.stringify((record as { etfFlow?: unknown }).etfFlow ?? null),
+        optionsJson: JSON.stringify((record as { options?: unknown }).options ?? null),
       },
     });
     return row.id;
@@ -162,12 +169,6 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
   }
 
   async listEvents(filters: EventFilters): Promise<NormalizedEvent[]> {
-    // Fetch more rows than the limit when session filtering is needed to avoid
-    // under-returning due to in-memory filtering applied after the DB take.
-    const fetchLimit = filters.session !== undefined && filters.limit !== undefined
-      ? filters.limit * 5
-      : filters.limit;
-
     const rows = await this.prisma.collectedEvent.findMany({
       where: {
         ...(filters.eventType !== undefined ? { eventType: filters.eventType } : {}),
@@ -176,20 +177,13 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         ...(filters.category !== undefined ? { category: filters.category } : {}),
         ...(filters.importance !== undefined ? { importance: filters.importance } : {}),
         ...(filters.fromDate !== undefined ? { collectedAt: { gte: filters.fromDate } } : {}),
+        ...(filters.session !== undefined ? { sessionRelevanceText: { contains: filters.session } } : {}),
       },
       orderBy: { collectedAt: 'desc' },
-      take: fetchLimit,
+      take: filters.limit,
     });
 
-    const events = rows.map((row) => JSON.parse(row.rawJson) as NormalizedEvent);
-
-    if (filters.session !== undefined) {
-      const session = filters.session;
-      const filtered = events.filter((e) => e.sessionRelevance.includes(session));
-      return filters.limit !== undefined ? filtered.slice(0, filters.limit) : filtered;
-    }
-
-    return events;
+    return rows.map((row) => JSON.parse(row.rawJson) as NormalizedEvent);
   }
 
   async listTelegramPosts(filters: TelegramPostFilters): Promise<TelegramPostRecord[]> {

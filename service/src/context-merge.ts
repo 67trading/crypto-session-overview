@@ -17,7 +17,16 @@ export function mergeLiquidityContext(
   result: CollectorResult<LiquidityContext>,
 ): OverviewInput {
   if (result.data === undefined) return input;
-  return { ...input, liquidityContext: result.data };
+  const existing = input.liquidityContext;
+  if (existing === undefined) return { ...input, liquidityContext: result.data };
+  // Combine clusters from both sources
+  return {
+    ...input,
+    liquidityContext: {
+      clusters: [...existing.clusters, ...result.data.clusters],
+      dataFreshnessSeconds: result.data.dataFreshnessSeconds ?? existing.dataFreshnessSeconds,
+    },
+  };
 }
 
 export function mergeEtfFlowContext(
@@ -25,7 +34,16 @@ export function mergeEtfFlowContext(
   result: CollectorResult<EtfFlowContext>,
 ): OverviewInput {
   if (result.data === undefined) return input;
-  return { ...input, etfFlowContext: result.data };
+  const existing = input.etfFlowContext;
+  if (existing === undefined) return { ...input, etfFlowContext: result.data };
+  // Existing (primary/Farside) wins; new data fills in only undefined fields
+  return {
+    ...input,
+    etfFlowContext: {
+      ...result.data,   // new data as base
+      ...existing,      // existing overwrites (primary wins)
+    },
+  };
 }
 
 export function mergeOptionsContext(
@@ -33,7 +51,8 @@ export function mergeOptionsContext(
   result: CollectorResult<OptionsContext[]>,
 ): OverviewInput {
   if (result.data === undefined) return input;
-  return { ...input, optionsContext: result.data };
+  const existing = input.optionsContext ?? [];
+  return { ...input, optionsContext: [...existing, ...result.data] };
 }
 
 // Deep-merge so multiple collectors (FRED for rates, BEA for GDP/PCE) can each contribute fields
@@ -66,7 +85,10 @@ export function mergeBreadthContext(
   result: CollectorResult<AltsBreadthSummary>,
 ): OverviewInput {
   if (result.data === undefined) return input;
-  return { ...input, altsBreadth: result.data };
+  const existing = input.altsBreadth;
+  if (existing === undefined) return { ...input, altsBreadth: result.data };
+  // New data fills in additional fields; existing fields take priority
+  return { ...input, altsBreadth: { ...result.data, ...existing } };
 }
 
 // Type-safe constructor — erases T to unknown so entries can be stored in a plain array.

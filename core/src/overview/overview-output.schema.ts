@@ -89,3 +89,7 @@ export const OverviewOutputSchema = z.object({
 });
 
 export type OverviewOutput = z.infer<typeof OverviewOutputSchema>;
+
+export type MarketRegime = z.infer<typeof OverviewOutputSchema>['marketRegime'];
+export type DataStatusValue = 'fresh' | 'stale' | 'partial' | 'failed' | 'unavailable';
+export type DataStatus = z.infer<typeof OverviewOutputSchema>['dataStatus'];

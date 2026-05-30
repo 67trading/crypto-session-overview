@@ -59,10 +59,11 @@ model CollectedEvent {
   importance       String?
   confidence       String?
   // Patch 3A additions
-  duplicateGroupId String?
-  sessionImpact    String?
-  detectedAt       DateTime?
-  collectedAt      DateTime  @default(now())
+  duplicateGroupId    String?
+  sessionImpact       String?
+  detectedAt          DateTime?
+  sessionRelevanceText String   @default("")  // "ASIA_CRYPTO,EUROPE_CRYPTO"
+  collectedAt         DateTime  @default(now())
 }
 
 model CollectorRun {

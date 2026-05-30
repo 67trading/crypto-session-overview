@@ -15,10 +15,12 @@ export type DerivativesContext = {
 export type ActiveOverviewSetup = {
   setupId: string;
   symbol: string;
-  model: string;
-  side: string;
+  direction: 'LONG' | 'SHORT';
+  setupType: string;
+  timeframeSource: 'Weekly' | 'Daily' | '4H' | 'Session';
   status: string;
-  aoi?: { low: number; high: number };
+  relevantZone?: { low: number; high: number };
+  invalidation?: number;
 };
 
 export type HtfLevelsSnapshot = {

@@ -7,15 +7,27 @@ export type ComputedDataStatus = {
   liquidations: DataStatusValue;
 };
 
-export function buildSourceHealthSummary(collectors: CollectorDataQuality[]): SourceHealthSummary {
+export type EnrichedCollectorQuality = CollectorDataQuality & {
+  source?: string;
+  durationMs?: number;
+  dataFreshnessSeconds?: number;
+  payloadHash?: string;
+};
+
+export function buildSourceHealthSummary(collectors: EnrichedCollectorQuality[]): SourceHealthSummary {
   return {
     collectors: collectors.map((c) => ({
       name: c.name,
+      source: c.source ?? c.name,
       status: c.status,
       itemCount: c.itemCount,
+      ...(c.durationMs !== undefined ? { durationMs: c.durationMs } : {}),
+      ...(c.dataFreshnessSeconds !== undefined ? { dataFreshnessSeconds: c.dataFreshnessSeconds } : {}),
+      ...(c.payloadHash !== undefined ? { payloadHash: c.payloadHash } : {}),
       ...(c.error !== undefined ? { error: c.error } : {}),
     })),
     healthyCount: collectors.filter((c) => c.status === 'success').length,
+    partialCount: collectors.filter((c) => c.status === 'partial').length,
     failedCount: collectors.filter((c) => c.status === 'failed').length,
     skippedCount: collectors.filter((c) => c.status === 'skipped').length,
   };
