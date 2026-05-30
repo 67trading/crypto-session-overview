@@ -226,6 +226,8 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
       ...(row.durationMs !== null ? { durationMs: row.durationMs } : {}),
       ...(row.dataFreshnessSeconds !== null ? { dataFreshnessSeconds: row.dataFreshnessSeconds } : {}),
       ...(row.fallbackUsed !== null ? { fallbackUsed: row.fallbackUsed } : {}),
+      ...(row.source !== null ? { source: row.source } : {}),
+      ...(row.payloadHash !== null ? { payloadHash: row.payloadHash } : {}),
     }));
   }
 

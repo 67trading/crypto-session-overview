@@ -249,7 +249,9 @@ export class OverviewRunner {
             itemCount: result.itemCount,
             ...(result.error !== undefined ? { errorMessage: result.error } : {}),
             durationMs: Date.now() - t0,
-            source: collector.sourceName,
+            source: result.source ?? collector.sourceName,
+            ...(result.payloadHash !== undefined ? { payloadHash: result.payloadHash } : {}),
+            ...(result.dataFreshnessSeconds !== undefined ? { dataFreshnessSeconds: result.dataFreshnessSeconds } : {}),
           });
         } catch (err) {
           logger.warn({ collector: collector.sourceName, err }, 'Context collector failed');

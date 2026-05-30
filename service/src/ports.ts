@@ -29,13 +29,6 @@ export type DataQualityInfo = {
   failedSources: string[];
 };
 
-export type DataStatus = {
-  price: DataStatusValue;
-  events: DataStatusValue;
-  derivatives: DataStatusValue;
-  liquidations: DataStatusValue;
-};
-
 export type PrecomputedRegime = {
   marketRegime: MarketRegime;
   briefConfidence: 'low' | 'medium' | 'high';
@@ -105,6 +98,10 @@ export type CollectorRunContext = {
 export type CollectorResult<T> = {
   status: 'success' | 'partial' | 'failed' | 'skipped';
   data?: T;
+  source?: string;
+  payloadHash?: string;
+  dataFreshnessSeconds?: number;
+  durationMs?: number;
   error?: string;
   itemCount: number;
 };
