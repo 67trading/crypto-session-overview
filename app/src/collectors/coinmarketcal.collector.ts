@@ -81,10 +81,10 @@ function formatDate(d: Date): string {
 export class CoinMarketCalCollector implements EventCollector {
   readonly sourceName = 'coinmarketcal';
 
-  constructor(private readonly apiKey: string) {}
+  constructor(private readonly apiKey: string, private readonly coins?: string) {}
 
-  async collect(_session: CryptoSession): Promise<NormalizedEvent[]> {
-    const cacheKey = 'default';
+  async collect(session: CryptoSession): Promise<NormalizedEvent[]> {
+    const cacheKey = session;
     const cached = cache.get(cacheKey);
     if (cached !== undefined && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
       return cached.data;
@@ -96,6 +96,7 @@ export class CoinMarketCalCollector implements EventCollector {
       max: '50',
       dateRangeStart: formatDate(now),
       dateRangeEnd: formatDate(end),
+      ...(this.coins !== undefined ? { coins: this.coins } : {}),
     });
 
     const response = await fetch(`${API_BASE}?${params.toString()}`, {

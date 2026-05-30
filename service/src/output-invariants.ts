@@ -53,6 +53,15 @@ export function scanForForbiddenPhrases(output: OverviewOutput): string[] {
   return violations;
 }
 
+// Hard violations block Telegram publishing; soft violations are logged only
+export function hasHardViolations(output: OverviewOutput): boolean {
+  if (scanForForbiddenPhrases(output).length > 0) return true;
+  if (!output.liquidity?.bullets?.length) return true;
+  if (!output.scenarios.reclaim || !output.scenarios.rejection || !output.scenarios.chop) return true;
+  if (!output.note) return true;
+  return false;
+}
+
 export function checkOutputInvariants(output: OverviewOutput): string[] {
   const violations: string[] = [];
 

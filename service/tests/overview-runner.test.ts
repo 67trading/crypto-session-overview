@@ -256,14 +256,35 @@ describe('OverviewRunner.run()', () => {
     const runner = new OverviewRunner(deps);
     const result = await runner.run(RUN_OPTIONS);
 
-    // Run still succeeds
-    expect(result.status).toBe('SUCCESS');
+    // Run downgrades to PARTIAL due to hard violations
+    expect(result.status).toBe('PARTIAL');
+    expect(result.telegramPublished).toBe(false);
     // Invariant warning was logged
     const warnCalls = logger.warn.mock.calls as unknown[][];
     const invariantWarn = warnCalls.find((args) =>
       typeof args[1] === 'string' && args[1].includes('invariant'),
     );
     expect(invariantWarn).toBeDefined();
+  });
+
+  it('does not publish to Telegram when output has hard violations (forbidden phrase)', async () => {
+    const badOutput = makeValidOutput();
+    badOutput.scenarios.reclaim = 'Go long above 98000.';
+
+    const publisher = { publish: vi.fn().mockResolvedValue(['msg-1']) };
+    const deps = makeDeps({
+      publisher,
+      llmClient: {
+        modelName: 'test-model',
+        generateOverview: vi.fn().mockResolvedValue({ output: badOutput }),
+      },
+    });
+    const runner = new OverviewRunner(deps);
+    const result = await runner.run({ ...RUN_OPTIONS, publish: true });
+
+    expect(result.status).toBe('PARTIAL');
+    expect(result.telegramPublished).toBe(false);
+    expect(publisher.publish).not.toHaveBeenCalled();
   });
 
   it('includes marketRegime and briefConfidence in SUCCESS result', async () => {

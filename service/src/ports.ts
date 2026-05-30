@@ -113,6 +113,7 @@ export type AltsBreadthSummary = {
   totalTracked: number;
   breadthLabel: string;
   rotationState: 'broad_rotation' | 'selective_rotation' | 'no_rotation' | 'weak' | 'unknown';
+  outperformingBtcPct?: number;
 };
 
 export type DerivativesNarrativeSummary = {
@@ -207,6 +208,7 @@ export type MacroRatesContext = {
   dxy?: number;
   pceYoY?: number;
   gdpGrowthQoQ?: number;
+  pcePriceIndexQoQ?: number;
   ecbDepositRate?: number;
   ecbMainRate?: number;
   eurozoneHicpYoY?: number;
@@ -400,7 +402,7 @@ export type CollectorRunRecord = {
   collectorName: string;
   startedAt: Date;
   finishedAt?: Date;
-  status: 'SUCCESS' | 'FAILED' | 'SKIPPED';
+  status: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'SKIPPED';
   itemCount: number;
   errorMessage?: string;
   durationMs?: number;
@@ -468,7 +470,7 @@ export type TelegramPostFilters = {
 
 export type CollectorRunFilters = {
   collectorName?: string;
-  status?: 'SUCCESS' | 'FAILED' | 'SKIPPED';
+  status?: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'SKIPPED';
   limit?: number;
   fromDate?: Date;
 };

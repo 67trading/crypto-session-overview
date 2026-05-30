@@ -80,7 +80,7 @@ describe('DeribitOptionsCollector', () => {
     expect([90000, 100000]).toContain(result.data?.[0]?.maxPainStrike);
   });
 
-  it('returns BTC as the symbol', async () => {
+  it('returns BTC as the symbol for the first item', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
       makeDeribitResponse([makeInstrument(90000, 'C', 100)]),
     ));
@@ -89,6 +89,17 @@ describe('DeribitOptionsCollector', () => {
     const result = await collector.collect(ctx);
 
     expect(result.data?.[0]?.symbol).toBe('BTC');
+  });
+
+  it('returns both BTC and ETH when both APIs succeed', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() =>
+      Promise.resolve(makeDeribitResponse([makeInstrument(90000, 'C', 1000)])),
+    ));
+    const collector = new DeribitOptionsCollector();
+    const result = await collector.collect(ctx);
+    expect(result.status).toBe('success');
+    // 2 currencies: BTC + ETH (mock returns same data for both)
+    expect(result.data?.length).toBe(2);
   });
 
   it('returns partial when result array is empty', async () => {
@@ -102,10 +113,11 @@ describe('DeribitOptionsCollector', () => {
     expect(result.status).toBe('partial');
   });
 
-  it('throws when Deribit returns non-200', async () => {
+  it('returns partial when Deribit returns non-200', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Too Many Requests', { status: 429 })));
 
     const collector = new DeribitOptionsCollector();
-    await expect(collector.collect(ctx)).rejects.toThrow('429');
+    const result = await collector.collect(ctx);
+    expect(result.status).toBe('partial');
   });
 });

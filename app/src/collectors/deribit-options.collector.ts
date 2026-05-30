@@ -86,25 +86,40 @@ export class DeribitOptionsCollector implements ContextCollector<OptionsContext[
   readonly sourceName = 'deribit-options';
 
   async collect(_ctx: CollectorRunContext): Promise<CollectorResult<OptionsContext[]>> {
-    const url = `${BASE}/get_book_summary_by_currency?currency=BTC&kind=option`;
+    const [btcRes, ethRes] = await Promise.allSettled([
+      this.fetchCurrency('BTC'),
+      this.fetchCurrency('ETH'),
+    ]);
+
+    const data: OptionsContext[] = [];
+    for (const res of [btcRes, ethRes]) {
+      if (res.status === 'fulfilled' && res.value !== null) {
+        data.push(res.value);
+      }
+    }
+
+    if (data.length === 0) return { status: 'partial', itemCount: 0 };
+    return { status: 'success', data, itemCount: data.length };
+  }
+
+  private async fetchCurrency(currency: 'BTC' | 'ETH'): Promise<OptionsContext | null> {
+    const url = `${BASE}/get_book_summary_by_currency?currency=${currency}&kind=option`;
     const res = await fetch(url, { headers: { 'User-Agent': UA } });
-    if (!res.ok) throw new Error(`Deribit options: ${res.status} ${res.statusText}`);
+    if (!res.ok) throw new Error(`Deribit options ${currency}: ${res.status} ${res.statusText}`);
 
     const json = await res.json() as DeribitResponse;
     const summaries = json.result ?? [];
-    if (summaries.length === 0) return { status: 'partial', itemCount: 0 };
+    if (summaries.length === 0) return null;
 
     const putCallRatio = computePcr(summaries);
     const impliedVol24h = computeAtmIv(summaries);
     const maxPainStrike = computeMaxPain(summaries);
 
-    const data: OptionsContext[] = [{
-      symbol: 'BTC',
+    return {
+      symbol: currency,
       ...(putCallRatio !== undefined ? { putCallRatio } : {}),
       ...(impliedVol24h !== undefined ? { impliedVol24h } : {}),
       ...(maxPainStrike !== undefined ? { maxPainStrike } : {}),
-    }];
-
-    return { status: 'success', data, itemCount: summaries.length };
+    };
   }
 }

@@ -39,7 +39,7 @@ describe('MobulaUnlocksCollector', () => {
 
     expect(events).toHaveLength(1);
     expect(events[0]?.asset).toBe('ARB');
-    expect(events[0]?.source).toBe('mobula-unlocks');
+    expect(events[0]?.source).toBe('defillama-mobula-unlocks');
   });
 
   it('includes unlock when token count > 1% of circulating supply', async () => {

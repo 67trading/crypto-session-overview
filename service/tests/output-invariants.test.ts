@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scanForForbiddenPhrases, checkOutputInvariants, FORBIDDEN_PHRASES } from '../src/output-invariants.js';
+import { scanForForbiddenPhrases, checkOutputInvariants, hasHardViolations, FORBIDDEN_PHRASES } from '../src/output-invariants.js';
 import type { OverviewOutput } from '../src/ports.js';
 
 function makeOutput(overrides: Partial<OverviewOutput> = {}): OverviewOutput {
@@ -163,5 +163,26 @@ describe('checkOutputInvariants()', () => {
     const output = makeOutput({ scenarios: { reclaim: 'Go long.', rejection: 'x', chop: 'x' } });
     const violations = checkOutputInvariants(output);
     expect(violations.some((v) => v.includes('go long'))).toBe(true);
+  });
+});
+
+describe('hasHardViolations()', () => {
+  it('returns true when output contains a forbidden phrase', () => {
+    const output = makeOutput({ note: 'Go long at 97k.' });
+    expect(hasHardViolations(output)).toBe(true);
+  });
+
+  it('returns true when liquidity bullets are empty', () => {
+    const output = makeOutput({ liquidity: { bullets: [] } });
+    expect(hasHardViolations(output)).toBe(true);
+  });
+
+  it('returns true when a scenario field is empty', () => {
+    const output = makeOutput({ scenarios: { reclaim: '', rejection: 'x', chop: 'x' } });
+    expect(hasHardViolations(output)).toBe(true);
+  });
+
+  it('returns false for a clean output', () => {
+    expect(hasHardViolations(makeOutput())).toBe(false);
   });
 });

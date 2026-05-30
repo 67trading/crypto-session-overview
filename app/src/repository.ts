@@ -87,6 +87,8 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         dataStatusJson: JSON.stringify(output.dataStatus),
         whatChangedJson: JSON.stringify(output.whatChanged),
         scenariosJson: JSON.stringify(output.scenarios),
+        liquidityJson: JSON.stringify(output.liquidity ?? null),
+        eventsJson: JSON.stringify(output.events ?? null),
       },
     });
     return row.id;
@@ -160,6 +162,12 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
   }
 
   async listEvents(filters: EventFilters): Promise<NormalizedEvent[]> {
+    // Fetch more rows than the limit when session filtering is needed to avoid
+    // under-returning due to in-memory filtering applied after the DB take.
+    const fetchLimit = filters.session !== undefined && filters.limit !== undefined
+      ? filters.limit * 5
+      : filters.limit;
+
     const rows = await this.prisma.collectedEvent.findMany({
       where: {
         ...(filters.eventType !== undefined ? { eventType: filters.eventType } : {}),
@@ -170,14 +178,15 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         ...(filters.fromDate !== undefined ? { collectedAt: { gte: filters.fromDate } } : {}),
       },
       orderBy: { collectedAt: 'desc' },
-      take: filters.limit,
+      take: fetchLimit,
     });
 
     const events = rows.map((row) => JSON.parse(row.rawJson) as NormalizedEvent);
 
     if (filters.session !== undefined) {
       const session = filters.session;
-      return events.filter((e) => e.sessionRelevance.includes(session));
+      const filtered = events.filter((e) => e.sessionRelevance.includes(session));
+      return filters.limit !== undefined ? filtered.slice(0, filters.limit) : filtered;
     }
 
     return events;

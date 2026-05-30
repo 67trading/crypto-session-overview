@@ -29,39 +29,61 @@ function latestQuarter(rows: BeaDataRow[], lineNumber: string): number | undefin
   return filtered.length > 0 ? parseBeaValue(filtered[0]!.DataValue) : undefined;
 }
 
+function computeQoQChange(rows: BeaDataRow[], lineNumber: string): number | undefined {
+  const filtered = rows
+    .filter((r) => r.LineNumber === lineNumber)
+    .sort((a, b) => `${b.Year}${b.Period}`.localeCompare(`${a.Year}${a.Period}`));
+  if (filtered.length < 2) return undefined;
+  const latest = parseBeaValue(filtered[0]!.DataValue);
+  const previous = parseBeaValue(filtered[1]!.DataValue);
+  if (latest === undefined || previous === undefined || previous === 0) return undefined;
+  return parseFloat(((latest - previous) / previous * 100).toFixed(2));
+}
+
+async function fetchBeaTable(apiKey: string, tableName: string): Promise<BeaDataRow[]> {
+  const params = new URLSearchParams({
+    UserID: apiKey,
+    method: 'GetData',
+    datasetname: 'NIPA',
+    TableName: tableName,
+    Frequency: 'Q',
+    Year: 'LAST5',
+    ResultFormat: 'JSON',
+  });
+  const url = `${BEA_BASE}?${params.toString()}`;
+  const res = await fetch(url, { headers: { 'User-Agent': UA } });
+  if (!res.ok) throw new Error(`BEA ${tableName}: ${res.status} ${res.statusText}`);
+  const json = await res.json() as BeaResponse;
+  return json.BEAAPI?.Results?.Data ?? [];
+}
+
 export class BeaGdpCollector implements ContextCollector<MacroRatesContext> {
   readonly sourceName = 'bea-gdp';
 
   constructor(private readonly apiKey: string) {}
 
   async collect(_ctx: CollectorRunContext): Promise<CollectorResult<MacroRatesContext>> {
-    const params = new URLSearchParams({
-      UserID: this.apiKey,
-      method: 'GetData',
-      datasetname: 'NIPA',
-      TableName: 'T10109',
-      Frequency: 'Q',
-      Year: 'LAST5',
-      ResultFormat: 'JSON',
-    });
-    const url = `${BEA_BASE}?${params.toString()}`;
-    const res = await fetch(url, { headers: { 'User-Agent': UA } });
-    if (!res.ok) throw new Error(`BEA GDP: ${res.status} ${res.statusText}`);
+    const [gdpRows, pceRows] = await Promise.all([
+      fetchBeaTable(this.apiKey, 'T10109'),
+      fetchBeaTable(this.apiKey, 'T20804'),
+    ]);
 
-    const json = await res.json() as BeaResponse;
-    const rows = json.BEAAPI?.Results?.Data;
-    if (!Array.isArray(rows) || rows.length === 0) {
+    if (!Array.isArray(gdpRows) || gdpRows.length === 0) {
       return { status: 'partial', itemCount: 0 };
     }
 
     // T10109 Line 1 = Percent change in Real GDP
-    const gdpGrowthQoQ = latestQuarter(rows, '1');
+    const gdpGrowthQoQ = latestQuarter(gdpRows, '1');
     if (gdpGrowthQoQ === undefined) {
       return { status: 'partial', itemCount: 0 };
     }
 
+    // T20804 Line 1 = PCE chain-type price index, total
+    const pcePriceIndexQoQ = computeQoQChange(pceRows, '1');
+
     const data: MacroRatesContext = {
       gdpGrowthQoQ,
+      ...(pcePriceIndexQoQ !== undefined ? { pcePriceIndexQoQ } : {}),
       dataDate: new Date().toISOString().slice(0, 10),
     };
 

@@ -38,6 +38,24 @@ import type { AppConfig } from './config.js';
 import type { LoggerLike } from '../../service/src/ports.js';
 import type { SessionOverviewDeps, ContextCollectorEntry } from '../../service/src/service-types.js';
 
+function toCoinSlug(symbol: string): string {
+  // 'BTCUSDT' → 'bitcoin', 'ETHUSDT' → 'ethereum', etc.
+  const map: Record<string, string> = {
+    BTCUSDT: 'bitcoin', ETHUSDT: 'ethereum', SOLUSDT: 'solana',
+    BNBUSDT: 'binance-coin', XRPUSDT: 'ripple', DOGEUSDT: 'dogecoin',
+    ADAUSDT: 'cardano', AVAXUSDT: 'avalanche', DOTUSDT: 'polkadot',
+    LINKUSDT: 'chainlink', MATICUSDT: 'polygon', UNIUSDT: 'uniswap',
+    ARBUSDT: 'arbitrum', OPUSDT: 'optimism', SEIUSDT: 'sei-network',
+    SUIUSDT: 'sui', APTUSDT: 'aptos', INJUSDT: 'injective-protocol',
+  };
+  return map[symbol] ?? symbol.replace('USDT', '').toLowerCase();
+}
+
+function buildCoinSlugList(symbols: { core: string[]; major: string[]; watch: string[] }): string {
+  const all = [...new Set([...symbols.core, ...symbols.major])];
+  return all.map(toCoinSlug).join(',');
+}
+
 export function wire(config: AppConfig, logger: LoggerLike): SessionOverviewService {
   const bybitClient = new BybitHttpClient(
     config.bybit.baseUrl,
@@ -63,7 +81,7 @@ export function wire(config: AppConfig, logger: LoggerLike): SessionOverviewServ
 
   const coinmarketcalApiKey = process.env['COINMARKETCAL_API_KEY'];
   if (coinmarketcalApiKey !== undefined && coinmarketcalApiKey !== '') {
-    eventCollectors.push(new CoinMarketCalCollector(coinmarketcalApiKey));
+    eventCollectors.push(new CoinMarketCalCollector(coinmarketcalApiKey, buildCoinSlugList(config.symbols)));
   }
 
   // Context collectors — always-on (public), or gated on API keys (FRED, BEA)

@@ -68,7 +68,7 @@ describe('CoinMarketCalCollector', () => {
     expect(result[2]?.eventType).toBe('exchange_listing');
   });
 
-  it('does NOT filter by coins (request URL does not include coins=)', async () => {
+  it('does NOT include coins= in URL when no coins param provided', async () => {
     const fetchSpy = mockFetch({ body: [makeEvent()] });
 
     const { CoinMarketCalCollector } = await import(
@@ -80,6 +80,20 @@ describe('CoinMarketCalCollector', () => {
     expect(fetchSpy).toHaveBeenCalledOnce();
     const calledUrl: string = fetchSpy.mock.calls[0][0] as string;
     expect(calledUrl).not.toContain('coins=');
+  });
+
+  it('includes coins= in URL when coins param is provided', async () => {
+    const fetchSpy = mockFetch({ body: [makeEvent()] });
+
+    const { CoinMarketCalCollector } = await import(
+      '../../src/collectors/coinmarketcal.collector.js'
+    );
+    const collector = new CoinMarketCalCollector(API_KEY, 'bitcoin,ethereum');
+    await collector.collect('US_CRYPTO');
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const calledUrl: string = fetchSpy.mock.calls[0][0] as string;
+    expect(calledUrl).toContain('coins=');
   });
 
   it('importanceFor returns critical for percentage >= 90', async () => {

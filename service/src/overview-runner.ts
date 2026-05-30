@@ -5,7 +5,7 @@ import { OverviewInputBuilder } from './overview-input-builder.js';
 import { OverviewFormatter } from './overview-formatter.js';
 import { computeDataStatus, buildSourceHealthSummary } from './source-health-evaluator.js';
 import { computeWhatChanged, firstBriefBullets } from './brief-diff-engine.js';
-import { checkOutputInvariants } from './output-invariants.js';
+import { checkOutputInvariants, hasHardViolations } from './output-invariants.js';
 import { classifyMarketRegime } from './market-regime-classifier.js';
 import { analyzeAltsBreadth } from './alts-breadth-analyzer.js';
 import { buildDerivativesNarrative } from './derivatives-narrative-builder.js';
@@ -237,6 +237,7 @@ export class OverviewRunner {
             startedAt: new Date(t0),
             finishedAt: new Date(),
             status: result.status === 'success' ? 'SUCCESS'
+              : result.status === 'partial' ? 'PARTIAL'
               : result.status === 'skipped' ? 'SKIPPED'
               : 'FAILED',
             itemCount: result.itemCount,
@@ -331,10 +332,11 @@ export class OverviewRunner {
           : firstBriefBullets(),
       };
 
-      // 10b. Hard invariant sweep — log any violations as warnings (never throw)
+      // 10b. Hard invariant sweep — hard violations downgrade to PARTIAL and block publish
       const invariantViolations = checkOutputInvariants(output);
+      const outputHasHardViolations = hasHardViolations(output);
       if (invariantViolations.length > 0) {
-        logger.warn({ session, violations: invariantViolations }, 'Output invariant violations detected');
+        logger.warn({ session, violations: invariantViolations, hard: outputHasHardViolations }, 'Output invariant violations detected');
       }
 
       // 11. Format
@@ -344,7 +346,7 @@ export class OverviewRunner {
       const telegramPostIds: string[] = [];
       const overviewId = await repository.saveOverview({
         session,
-        status: 'SUCCESS',
+        status: outputHasHardViolations ? 'PARTIAL' : 'SUCCESS',
         outputJson: output,
         humanReport,
         inputSnapshotId,
@@ -368,7 +370,7 @@ export class OverviewRunner {
 
       // 14. Publish if requested
       let telegramPublished = false;
-      if (options.publish === true && this.deps.publisher !== undefined) {
+      if (options.publish === true && !outputHasHardViolations && this.deps.publisher !== undefined) {
         try {
           const chunks = this.formatter.splitForTelegram(humanReport);
           for (let i = 0; i < chunks.length; i++) {
@@ -394,10 +396,13 @@ export class OverviewRunner {
         }
       }
 
-      const collectorStatus: Record<string, 'success' | 'failed' | 'skipped'> = {};
-      for (const run of collectorRuns) {
+      const collectorStatus: Record<string, 'success' | 'partial' | 'failed' | 'skipped'> = {};
+      for (const run of [...collectorRuns, ...contextRunRecords]) {
         collectorStatus[run.collectorName] =
-          run.status === 'SUCCESS' ? 'success' : run.status === 'SKIPPED' ? 'skipped' : 'failed';
+          run.status === 'SUCCESS' ? 'success'
+          : run.status === 'PARTIAL' ? 'partial'
+          : run.status === 'SKIPPED' ? 'skipped'
+          : 'failed';
       }
 
       logger.info({ session, overviewId, durationMs: Date.now() - startedAt }, 'Overview run complete');
@@ -405,7 +410,7 @@ export class OverviewRunner {
       return {
         overviewId,
         session,
-        status: 'SUCCESS',
+        status: outputHasHardViolations ? 'PARTIAL' : 'SUCCESS',
         output,
         humanReport,
         ...(telegramPostIds.length > 0 ? { telegramPostIds } : {}),

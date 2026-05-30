@@ -56,7 +56,7 @@ export type OverviewRunResult = {
   telegramPublished: boolean;
   marketRegime?: string;
   briefConfidence?: string;
-  collectorStatus: Record<string, 'success' | 'failed' | 'skipped'>;
+  collectorStatus: Record<string, 'success' | 'partial' | 'failed' | 'skipped'>;
 };
 
 export type { OverviewRecord, OverviewFilters };

@@ -116,4 +116,18 @@ describe('CoinGeckoBreadthCollector', () => {
     expect(result.data?.totalTracked).toBe(2);
     expect(result.data?.positiveCount).toBe(2);
   });
+
+  it('computes outperformingBtcPct correctly', async () => {
+    // BTC = -2%, coin0 = +5% (outperforms BTC), coin1 = -3% (underperforms)
+    const coins = [
+      { id: 'bitcoin', symbol: 'btc', price_change_percentage_24h: -2 },
+      { id: 'coin-0', symbol: 'COIN0', price_change_percentage_24h: 5 },
+      { id: 'coin-1', symbol: 'COIN1', price_change_percentage_24h: -3 },
+    ];
+    mockFetch(coins);
+    const collector = new CoinGeckoBreadthCollector();
+    const result = await collector.collect(fakeCtx);
+    // 1 out of 2 non-BTC coins outperforms BTC → 50%
+    expect(result.data?.outperformingBtcPct).toBeCloseTo(50);
+  });
 });

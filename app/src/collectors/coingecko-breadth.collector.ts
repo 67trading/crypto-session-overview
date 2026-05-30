@@ -66,12 +66,24 @@ export class CoinGeckoBreadthCollector
     const breadthPercent =
       totalTracked > 0 ? (positiveCount / totalTracked) * 100 : 0;
 
+    const btcCoin = body.find((c) => c.id === 'bitcoin');
+    let outperformingBtcPct: number | undefined;
+    if (btcCoin?.price_change_percentage_24h !== null && btcCoin !== undefined) {
+      const btcChange = btcCoin.price_change_percentage_24h as number;
+      const outperformingBtc = withChange.filter(
+        (c) => c.id !== 'bitcoin' && (c.price_change_percentage_24h as number) > btcChange,
+      ).length;
+      const altsTracked = withChange.filter((c) => c.id !== 'bitcoin').length;
+      outperformingBtcPct = altsTracked > 0 ? parseFloat(((outperformingBtc / altsTracked) * 100).toFixed(1)) : 0;
+    }
+
     const data: AltsBreadthSummary = {
       breadthPercent,
       positiveCount,
       totalTracked,
       breadthLabel: breadthLabel(breadthPercent),
       rotationState: rotationState(breadthPercent),
+      ...(outperformingBtcPct !== undefined ? { outperformingBtcPct } : {}),
     };
 
     return { status: 'success', data, itemCount: totalTracked };

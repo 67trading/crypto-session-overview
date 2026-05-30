@@ -53,7 +53,7 @@ function importance(usdValue: number): 'critical' | 'high' | 'medium' | 'low' {
 }
 
 export class MobulaUnlocksCollector implements EventCollector {
-  readonly sourceName = 'mobula-unlocks';
+  readonly sourceName = 'defillama-mobula-unlocks';
 
   constructor(
     private readonly apiKey: string,
@@ -126,7 +126,7 @@ export class MobulaUnlocksCollector implements EventCollector {
         detectedAt,
         importance: imp,
         sessionRelevance: ALL_SESSIONS,
-        source: 'mobula-unlocks',
+        source: 'defillama-mobula-unlocks',
         summary: unlock.description
           ?? `${emission.name} unlock${usdValue > 0 ? ` — est. $${(usdValue / 1_000_000).toFixed(1)}M` : ''}`,
         confidence: market !== undefined ? 'high' : 'medium',

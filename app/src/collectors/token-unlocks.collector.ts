@@ -38,7 +38,7 @@ function relevanceScoreForImportance(importance: 'critical' | 'high' | 'medium' 
 export class TokenUnlocksCollector implements EventCollector {
   readonly sourceName = 'token-unlocks';
 
-  constructor(private readonly lookaheadDays: number = 7) {}
+  constructor(private readonly lookaheadDays: number = 3) {}
 
   async collect(_session: CryptoSession): Promise<NormalizedEvent[]> {
     const response = await fetch(API_URL, {
@@ -80,6 +80,8 @@ export class TokenUnlocksCollector implements EventCollector {
         const tokenCount = ev.noOfTokens[0] ?? 0;
         const price = emission.token?.price ?? 0;
         const usdValue = tokenCount * price;
+        if (tokenCount === 0) continue;
+        if (price > 0 && usdValue < 10_000_000) continue;
         const importance = importanceForUsd(usdValue);
         const relevanceScore = relevanceScoreForImportance(importance);
         const dedupeKey = `defillama-unlock-${emission.symbol}-${ev.timestamp}`;
