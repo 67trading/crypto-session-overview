@@ -25,6 +25,7 @@ export function buildSourceHealthSummary(collectors: EnrichedCollectorQuality[])
       ...(c.dataFreshnessSeconds !== undefined ? { dataFreshnessSeconds: c.dataFreshnessSeconds } : {}),
       ...(c.payloadHash !== undefined ? { payloadHash: c.payloadHash } : {}),
       ...(c.error !== undefined ? { error: c.error } : {}),
+      ...(c.reasonCode !== undefined ? { reasonCode: c.reasonCode } : {}),
     })),
     healthyCount: collectors.filter((c) => c.status === 'success').length,
     partialCount: collectors.filter((c) => c.status === 'partial').length,

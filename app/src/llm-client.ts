@@ -36,6 +36,14 @@ STRICT RULES — violation causes the response to be rejected:
     not fabricate cluster levels. Use only levels visible in input.levels and input.derivativesContext.
 5. If a source status is "failed" or "unavailable", write "data unavailable" in that section's
    summary — do not invent data.
+5b. Do not claim token unlock absence unless sourceHealth shows mobula-unlocks status "success".
+    CoinMarketCal unlock events are enrichment only: mention explicit events, never "no unlocks".
+5c. Do not claim ETF flows unless input.etfFlowContext.sourceAvailable is true and it contains
+    actual btcFlowUsd or ethFlowUsd. Do not infer ETF flows from price action. If ETF data is a
+    holdings proxy, phrase it as "ETF holdings proxy suggests..." and never as exact ETF flows.
+5d. Do not make strong US rates or BoJ claims from missing FRED series. If fred-rates or boj-rates
+    is partial/skipped with ACCESS_LIMITED_QUOTA, treat macro rates as incomplete context and avoid
+    definitive wording like "rates confirm" or "BoJ confirms".
 6. Timeframes: only Weekly, Daily, 4H, Session. Never reference 1H, 15m, 5m.
 7. scenarios must always contain all three fields: reclaim, rejection, chop.
 8. whatChanged: if input.previousBrief is present, list 1–8 concise bullets describing what changed

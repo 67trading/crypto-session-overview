@@ -62,6 +62,7 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         status: run.status,
         itemCount: run.itemCount,
         ...(run.errorMessage !== undefined ? { errorMessage: run.errorMessage } : {}),
+        ...(run.reasonCode !== undefined ? { reasonCode: run.reasonCode } : {}),
         ...(run.durationMs !== undefined ? { durationMs: run.durationMs } : {}),
         ...(run.dataFreshnessSeconds !== undefined ? { dataFreshnessSeconds: run.dataFreshnessSeconds } : {}),
         ...(run.fallbackUsed !== undefined ? { fallbackUsed: run.fallbackUsed } : {}),
@@ -234,19 +235,23 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
       ...(filters.limit !== undefined ? { take: filters.limit } : {}),
     });
 
-    return rows.map((row) => ({
-      collectorName: row.collectorName,
-      startedAt: row.startedAt,
-      ...(row.finishedAt !== null ? { finishedAt: row.finishedAt } : {}),
-      status: row.status as CollectorRunRecord['status'],
-      itemCount: row.itemCount,
-      ...(row.errorMessage !== null ? { errorMessage: row.errorMessage } : {}),
-      ...(row.durationMs !== null ? { durationMs: row.durationMs } : {}),
-      ...(row.dataFreshnessSeconds !== null ? { dataFreshnessSeconds: row.dataFreshnessSeconds } : {}),
-      ...(row.fallbackUsed !== null ? { fallbackUsed: row.fallbackUsed } : {}),
-      ...(row.source !== null ? { source: row.source } : {}),
-      ...(row.payloadHash !== null ? { payloadHash: row.payloadHash } : {}),
-    }));
+    return rows.map((row) => {
+      const record: CollectorRunRecord = {
+        collectorName: row.collectorName,
+        startedAt: row.startedAt,
+        status: row.status as CollectorRunRecord['status'],
+        itemCount: row.itemCount,
+      };
+      if (row.finishedAt !== null) record.finishedAt = row.finishedAt;
+      if (row.errorMessage !== null) record.errorMessage = row.errorMessage;
+      if (row.reasonCode !== null) record.reasonCode = row.reasonCode as NonNullable<CollectorRunRecord['reasonCode']>;
+      if (row.durationMs !== null) record.durationMs = row.durationMs;
+      if (row.dataFreshnessSeconds !== null) record.dataFreshnessSeconds = row.dataFreshnessSeconds;
+      if (row.fallbackUsed !== null) record.fallbackUsed = row.fallbackUsed;
+      if (row.source !== null) record.source = row.source;
+      if (row.payloadHash !== null) record.payloadHash = row.payloadHash;
+      return record;
+    });
   }
 
   private toOverviewRecord(row: {

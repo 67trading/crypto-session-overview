@@ -118,31 +118,33 @@ export class CoinMarketCalCollector implements EventCollector {
     const events = cmcResponse.body ?? [];
     const detectedAt = new Date().toISOString();
 
-    const normalized: NormalizedEvent[] = events.map((event): NormalizedEvent => {
-      const eventType = classifyCategories(event.categories);
-      const importance = importanceFor(event.percentage);
-      const confidence = confidenceFor(event.percentage);
-      const relevanceScore = relevanceScoreFor(eventType);
-      const dedupeKey = `coinmarketcal-${event.id}`;
-      const asset = event.coins[0]?.symbol;
+    const normalized: NormalizedEvent[] = events
+      .map((event): NormalizedEvent => {
+        const eventType = classifyCategories(event.categories);
+        const importance = importanceFor(event.percentage);
+        const confidence = confidenceFor(event.percentage);
+        const relevanceScore = relevanceScoreFor(eventType);
+        const dedupeKey = `coinmarketcal-${event.id}`;
+        const asset = event.coins[0]?.symbol;
 
-      return {
-        eventId: dedupeKey,
-        eventType,
-        category: 'crypto',
-        ...(asset !== undefined ? { asset } : {}),
-        title: event.title.en,
-        scheduledTime: new Date(event.date_event).toISOString(),
-        detectedAt,
-        importance,
-        sessionRelevance: ALL_SESSIONS,
-        source: 'coinmarketcal',
-        summary: event.description?.en ?? event.title.en,
-        confidence,
-        dedupeKey,
-        relevanceScore,
-      };
-    });
+        return {
+          eventId: dedupeKey,
+          eventType,
+          category: 'crypto',
+          ...(asset !== undefined ? { asset } : {}),
+          title: event.title.en,
+          scheduledTime: new Date(event.date_event).toISOString(),
+          detectedAt,
+          importance,
+          sessionRelevance: ALL_SESSIONS,
+          source: 'coinmarketcal',
+          summary: event.description?.en ?? event.title.en,
+          confidence,
+          dedupeKey,
+          relevanceScore,
+        };
+      })
+      .filter((event) => event.eventType === 'token_unlock');
 
     cache.set(cacheKey, { data: normalized, fetchedAt: Date.now() });
     return { status: 'success', data: normalized, itemCount: normalized.length };

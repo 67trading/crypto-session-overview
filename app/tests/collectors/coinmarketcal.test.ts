@@ -51,11 +51,10 @@ afterEach(() => {
 });
 
 describe('CoinMarketCalCollector', () => {
-  it('returns NormalizedEvent[] with correct eventType from categories', async () => {
+  it('emits only explicit token unlock enrichment events', async () => {
     const events = [
       makeEvent({ id: 1, categories: [{ name: 'Protocol' }, { name: 'Upgrade' }], percentage: 70 }),
-      makeEvent({ id: 2, categories: [{ name: 'Airdrop' }], percentage: 60 }),
-      makeEvent({ id: 3, categories: [{ name: 'Exchange' }, { name: 'Listing' }], percentage: 55 }),
+      makeEvent({ id: 2, categories: [{ name: 'Token Unlock' }], percentage: 60 }),
     ];
     mockFetch({ body: events });
 
@@ -65,10 +64,8 @@ describe('CoinMarketCalCollector', () => {
     const collector = new CoinMarketCalCollector(API_KEY);
     const result = await collector.collect(ctx);
 
-    expect(result.data).toHaveLength(3);
-    expect(result.data?.[0]?.eventType).toBe('protocol_upgrade');
-    expect(result.data?.[1]?.eventType).toBe('airdrop');
-    expect(result.data?.[2]?.eventType).toBe('exchange_listing');
+    expect(result.data).toHaveLength(1);
+    expect(result.data?.[0]?.eventType).toBe('token_unlock');
   });
 
   it('does NOT include coins= in URL when no coins param provided', async () => {
@@ -101,8 +98,8 @@ describe('CoinMarketCalCollector', () => {
 
   it('importanceFor returns critical for percentage >= 90', async () => {
     const events = [
-      makeEvent({ id: 10, percentage: 95 }),
-      makeEvent({ id: 11, percentage: 90 }),
+      makeEvent({ id: 10, percentage: 95, categories: [{ name: 'Token Unlock' }] }),
+      makeEvent({ id: 11, percentage: 90, categories: [{ name: 'Unlock' }] }),
     ];
     mockFetch({ body: events });
 
@@ -118,8 +115,8 @@ describe('CoinMarketCalCollector', () => {
 
   it('importanceFor returns high for percentage 80-89', async () => {
     const events = [
-      makeEvent({ id: 20, percentage: 85 }),
-      makeEvent({ id: 21, percentage: 80 }),
+      makeEvent({ id: 20, percentage: 85, categories: [{ name: 'Token Unlock' }] }),
+      makeEvent({ id: 21, percentage: 80, categories: [{ name: 'Unlock' }] }),
     ];
     mockFetch({ body: events });
 

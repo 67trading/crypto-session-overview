@@ -1,47 +1,100 @@
 import type { EventCollector, NormalizedEvent, CryptoSession, CollectorRunContext, CollectorResult } from '../../../service/src/ports.js';
 
-const EMISSIONS_URL = 'https://api.llama.fi/emission';
-const MOBULA_BASE = 'https://api.mobula.io/api/1/market/multi-data';
+const MULTI_METADATA_URL = 'https://api.mobula.io/api/1/multi-metadata';
 const UA = 'trader-agent/session-overview';
 const LOOKAHEAD_72H = 72 * 60 * 60;
 const ALL_SESSIONS: CryptoSession[] = ['ASIA_CRYPTO', 'EUROPE_CRYPTO', 'US_CRYPTO'];
 
-interface DefiLlamaUnlock { timestamp: number; noOfTokens: number[]; description?: string }
-interface DefiLlamaEmission {
-  name: string; symbol: string;
-  nextEvent?: DefiLlamaUnlock;
-  upcomingEvent?: DefiLlamaUnlock[];
-}
-
-interface MobulaAsset {
+type MobulaMetadata = {
+  name?: string;
+  symbol?: string;
   price?: number;
   market_cap?: number;
   circulating_supply?: number;
   rank?: number;
-}
-interface MobulaResponse { data?: Record<string, MobulaAsset> }
+  release_schedule?: unknown;
+};
+
+type UnlockCandidate = {
+  name: string;
+  symbol: string;
+  timestampSec: number;
+  tokenCount: number;
+  price: number;
+  circulatingSupply: number;
+  rank: number;
+  description?: string;
+};
 
 function normalizeSymbol(symbol: string): string {
   return symbol.replace(/USDT$/i, '').toUpperCase();
 }
 
-function passesFilter(
-  tokenCount: number,
-  market: MobulaAsset | undefined,
-  focusSymbols: Set<string>,
-  symbol: string,
-): boolean {
-  const price = market?.price ?? 0;
-  const supply = market?.circulating_supply ?? 0;
-  const rank = market?.rank ?? Infinity;
+function toAssetQuery(symbols: string[]): string {
+  return [...new Set(symbols.map(normalizeSymbol))].join(',');
+}
 
-  const valueUsd = tokenCount * price;
+function num(value: unknown): number {
+  if (Array.isArray(value)) return num(value[0]);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(/,/g, ''));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function timestampSeconds(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value > 1e12 ? Math.floor(value / 1000) : Math.floor(value);
+  if (typeof value === 'string') {
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber)) return timestampSeconds(asNumber);
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) return Math.floor(parsed / 1000);
+  }
+  return 0;
+}
+
+function dataArray(body: unknown): MobulaMetadata[] {
+  const data = (body as { data?: unknown }).data;
+  if (Array.isArray(data)) return data as MobulaMetadata[];
+  if (data !== null && typeof data === 'object') return Object.values(data) as MobulaMetadata[];
+  return [];
+}
+
+function extractScheduleItems(metadata: MobulaMetadata): unknown[] {
+  if (Array.isArray(metadata.release_schedule)) return metadata.release_schedule;
+  return [];
+}
+
+function extractCandidate(metadata: MobulaMetadata, item: unknown): UnlockCandidate | undefined {
+  if (item === null || typeof item !== 'object') return undefined;
+  const raw = item as Record<string, unknown>;
+  const symbol = normalizeSymbol(metadata.symbol ?? String(raw['symbol'] ?? ''));
+  if (symbol === '') return undefined;
+  const name = metadata.name ?? String(raw['name'] ?? symbol);
+  const timestampSec = timestampSeconds(raw['date'] ?? raw['unlock_date'] ?? raw['timestamp'] ?? raw['time']);
+  const tokenCount = num(raw['tokens'] ?? raw['amount'] ?? raw['amount_unlocked'] ?? raw['unlock_amount'] ?? raw['noOfTokens']);
+  if (timestampSec <= 0 || tokenCount <= 0) return undefined;
+
+  return {
+    name,
+    symbol,
+    timestampSec,
+    tokenCount,
+    price: num(metadata.price ?? raw['price']),
+    circulatingSupply: num(metadata.circulating_supply ?? raw['circulating_supply']),
+    rank: num(metadata.rank ?? raw['rank']) || Infinity,
+    ...(typeof raw['description'] === 'string' ? { description: raw['description'] } : {}),
+  };
+}
+
+function passesFilter(candidate: UnlockCandidate, focusSymbols: Set<string>): boolean {
+  const valueUsd = candidate.tokenCount * candidate.price;
   if (valueUsd > 10_000_000) return true;
-  if (supply > 0 && tokenCount > supply * 0.01) return true;
-  if (rank <= 200) return true;
-  if (focusSymbols.has(symbol.toUpperCase())) return true;
-  // cliff: ≥5% of supply unlocking at once
-  if (supply > 0 && tokenCount > supply * 0.05) return true;
+  if (candidate.circulatingSupply > 0 && candidate.tokenCount > candidate.circulatingSupply * 0.01) return true;
+  if (focusSymbols.has(candidate.symbol)) return true;
+  if (candidate.rank <= 200) return true;
   return false;
 }
 
@@ -52,89 +105,111 @@ function importance(usdValue: number): 'critical' | 'high' | 'medium' | 'low' {
   return 'low';
 }
 
+function relevanceScore(imp: 'critical' | 'high' | 'medium' | 'low'): number {
+  if (imp === 'critical') return 0.9;
+  if (imp === 'high') return 0.75;
+  if (imp === 'medium') return 0.55;
+  return 0.35;
+}
+
 export class MobulaUnlocksCollector implements EventCollector {
-  readonly sourceName = 'defillama-mobula-unlocks';
+  readonly sourceName = 'mobula-unlocks';
 
   constructor(
-    private readonly apiKey: string,
+    private readonly apiKey: string | undefined,
     private readonly focusSymbols: string[] = [],
   ) {}
 
-  async collect(_ctx: CollectorRunContext): Promise<CollectorResult<NormalizedEvent[]>> {
-    const emissionsRes = await fetch(EMISSIONS_URL, { headers: { 'User-Agent': UA } });
-    if (!emissionsRes.ok) throw new Error(`DefiLlama emissions: ${emissionsRes.status}`);
+  async collect(ctx: CollectorRunContext): Promise<CollectorResult<NormalizedEvent[]>> {
+    if (this.apiKey === undefined || this.apiKey.trim() === '') {
+      return {
+        status: 'skipped',
+        data: [],
+        itemCount: 0,
+        reasonCode: 'MISSING_API_KEY',
+        error: 'MOBULA_API_KEY is required for primary token unlock coverage',
+      };
+    }
 
-    const emissions = await emissionsRes.json() as DefiLlamaEmission[];
-    if (!Array.isArray(emissions) || emissions.length === 0) return { status: 'success', data: [], itemCount: 0 };
+    const core = ctx.symbols?.core ?? [];
+    const major = ctx.symbols?.major ?? [];
+    const watch = ctx.symbols?.watch ?? [];
+    const assets = toAssetQuery([...core, ...major, ...watch, ...this.focusSymbols]);
+    let response: Response;
+    try {
+      response = await fetch(`${MULTI_METADATA_URL}?assets=${encodeURIComponent(assets)}`, {
+        headers: { 'User-Agent': UA, Authorization: this.apiKey },
+      });
+    } catch (err) {
+      return {
+        status: 'failed',
+        data: [],
+        itemCount: 0,
+        reasonCode: 'TRANSIENT_NETWORK_ERROR',
+        error: `Mobula unlock metadata network error: ${String(err)}`,
+      };
+    }
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 402 || response.status === 403) {
+        return { status: 'skipped', data: [], itemCount: 0, reasonCode: 'ACCESS_LIMITED', error: `Mobula unlock metadata access limited: ${response.status} ${response.statusText}` };
+      }
+      if (response.status === 429) {
+        return { status: 'skipped', data: [], itemCount: 0, reasonCode: 'ACCESS_LIMITED_QUOTA', error: `Mobula unlock metadata quota/rate limited: ${response.status} ${response.statusText}` };
+      }
+      if (response.status >= 500) {
+        return { status: 'failed', data: [], itemCount: 0, reasonCode: 'TRANSIENT_NETWORK_ERROR', error: `Mobula unlock metadata transient error: ${response.status} ${response.statusText}` };
+      }
+      return { status: 'skipped', data: [], itemCount: 0, reasonCode: 'PARSER_ERROR', error: `Mobula unlock metadata unexpected HTTP response: ${response.status} ${response.statusText}` };
+    }
+
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch (err) {
+      return { status: 'skipped', data: [], itemCount: 0, reasonCode: 'PARSER_ERROR', error: `Mobula unlock metadata JSON parse failed: ${String(err)}` };
+    }
+
+    const metadataItems = dataArray(body);
+    if (metadataItems.length === 0) {
+      return { status: 'skipped', data: [], itemCount: 0, reasonCode: 'PARSER_ERROR', error: 'Mobula unlock metadata response has no data array/object' };
+    }
 
     const now = Math.floor(Date.now() / 1000);
     const windowEnd = now + LOOKAHEAD_72H;
     const detectedAt = new Date().toISOString();
+    const focusSet = new Set([...core, ...major, ...this.focusSymbols].map(normalizeSymbol));
+    const events: NormalizedEvent[] = [];
 
-    // Gather unlock candidates within 72h
-    type Candidate = { emission: DefiLlamaEmission; unlock: DefiLlamaUnlock };
-    const candidates: Candidate[] = [];
-    for (const e of emissions) {
-      const events = [
-        ...(e.nextEvent !== undefined ? [e.nextEvent] : []),
-        ...(e.upcomingEvent ?? []),
-      ];
-      for (const ev of events) {
-        if (ev.timestamp >= now && ev.timestamp <= windowEnd) {
-          candidates.push({ emission: e, unlock: ev });
-        }
+    for (const metadata of metadataItems) {
+      for (const item of extractScheduleItems(metadata)) {
+        const candidate = extractCandidate(metadata, item);
+        if (candidate === undefined) continue;
+        if (candidate.timestampSec < now || candidate.timestampSec > windowEnd) continue;
+        if (!passesFilter(candidate, focusSet)) continue;
+
+        const usdValue = candidate.tokenCount * candidate.price;
+        const imp = importance(usdValue);
+        const dedupeKey = `mobula-unlock-${candidate.symbol}-${candidate.timestampSec}`;
+        events.push({
+          eventId: dedupeKey,
+          eventType: 'token_unlock',
+          category: 'crypto',
+          asset: candidate.symbol,
+          title: `${candidate.name} (${candidate.symbol}) Token Unlock`,
+          scheduledTime: new Date(candidate.timestampSec * 1000).toISOString(),
+          detectedAt,
+          importance: imp,
+          sessionRelevance: ALL_SESSIONS,
+          source: 'mobula-unlocks',
+          summary: candidate.description ?? `${candidate.name} unlock${usdValue > 0 ? ` - est. $${(usdValue / 1_000_000).toFixed(1)}M` : ''}`,
+          confidence: 'high',
+          dedupeKey,
+          relevanceScore: relevanceScore(imp),
+        });
       }
     }
-    if (candidates.length === 0) return { status: 'success', data: [], itemCount: 0 };
 
-    // Batch-fetch Mobula market data for unique symbols
-    const symbols = [...new Set(candidates.map((c) => c.emission.symbol))];
-    const BATCH = 50;
-    const marketData: Record<string, MobulaAsset> = {};
-
-    for (let i = 0; i < symbols.length; i += BATCH) {
-      const batch = symbols.slice(i, i + BATCH).join(',');
-      const url = `${MOBULA_BASE}?assets=${encodeURIComponent(batch)}`;
-      const res = await fetch(url, {
-        headers: { 'User-Agent': UA, Authorization: this.apiKey },
-      });
-      if (!res.ok) continue; // soft fail per batch
-      const json = await res.json() as MobulaResponse;
-      if (json.data !== undefined) Object.assign(marketData, json.data);
-    }
-
-    const focusSet = new Set(this.focusSymbols.map(normalizeSymbol));
-    const results: NormalizedEvent[] = [];
-
-    for (const { emission, unlock } of candidates) {
-      const tokenCount = unlock.noOfTokens[0] ?? 0;
-      const market = marketData[emission.symbol];
-      if (!passesFilter(tokenCount, market, focusSet, emission.symbol)) continue;
-
-      const price = market?.price ?? 0;
-      const usdValue = tokenCount * price;
-      const imp = importance(usdValue);
-      const dedupeKey = `mobula-unlock-${emission.symbol}-${unlock.timestamp}`;
-
-      results.push({
-        eventId: dedupeKey,
-        eventType: 'token_unlock',
-        category: 'crypto',
-        asset: emission.symbol,
-        title: `${emission.name} (${emission.symbol}) Token Unlock`,
-        scheduledTime: new Date(unlock.timestamp * 1000).toISOString(),
-        detectedAt,
-        importance: imp,
-        sessionRelevance: ALL_SESSIONS,
-        source: 'defillama-mobula-unlocks',
-        summary: unlock.description
-          ?? `${emission.name} unlock${usdValue > 0 ? ` — est. $${(usdValue / 1_000_000).toFixed(1)}M` : ''}`,
-        confidence: market !== undefined ? 'high' : 'medium',
-        dedupeKey,
-        relevanceScore: imp === 'critical' ? 0.9 : imp === 'high' ? 0.75 : imp === 'medium' ? 0.55 : 0.35,
-      });
-    }
-
-    return { status: 'success', data: results, itemCount: results.length };
+    return { status: 'success', data: events, itemCount: events.length, source: 'mobula-unlocks' };
   }
 }

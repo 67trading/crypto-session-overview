@@ -40,12 +40,20 @@ export function mergeEtfFlowContext(
   if (result.data === undefined) return input;
   const existing = input.etfFlowContext;
   if (existing === undefined) return { ...input, etfFlowContext: result.data };
-  // Existing (primary/Farside) wins; new data fills in only undefined fields
+  const btcFlowUsd = existing.btcFlowUsd ?? result.data.btcFlowUsd;
+  const ethFlowUsd = existing.ethFlowUsd ?? result.data.ethFlowUsd;
+  // Earlier collectors have priority; later collectors fill missing per-asset fields.
   return {
     ...input,
     etfFlowContext: {
-      ...result.data,   // new data as base
-      ...existing,      // existing overwrites (primary wins)
+      ...result.data,
+      ...existing,
+      ...(btcFlowUsd !== undefined ? { btcFlowUsd } : {}),
+      ...(ethFlowUsd !== undefined ? { ethFlowUsd } : {}),
+      btcSourceAvailable: btcFlowUsd !== undefined,
+      ethSourceAvailable: ethFlowUsd !== undefined,
+      sourceAvailable: btcFlowUsd !== undefined || ethFlowUsd !== undefined,
+      isProxy: existing.isProxy === true && result.data.isProxy === true,
     },
   };
 }
