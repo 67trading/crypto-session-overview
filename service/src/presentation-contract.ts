@@ -59,8 +59,6 @@ export function buildPresentationContext(input: OverviewInput): PresentationCont
     if (etf.ethFlowUsd !== undefined) {
       etfBullets.push(`${prefix} ETH ${formatUsd(etf.ethFlowUsd)} USD on ${etf.date}.`);
     }
-  } else {
-    etfBullets.push('ETF flow context is unavailable from configured free sources.');
   }
 
   const optionsBullets: string[] = [];

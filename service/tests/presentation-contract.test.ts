@@ -44,6 +44,14 @@ describe('buildPresentationContext()', () => {
     expect(context.etfNarrative.bullets[0]).toContain('ETF flows show BTC');
   });
 
+  it('does not create ETF bullets when ETF source data is unavailable', () => {
+    const context = buildPresentationContext(makeInput());
+
+    expect(context.etfNarrative.sourceAvailable).toBe(false);
+    expect(context.etfNarrative.claimAllowed).toBe(false);
+    expect(context.etfNarrative.bullets).toEqual([]);
+  });
+
   it('uses holdings proxy wording for proxy ETF data', () => {
     const context = buildPresentationContext(makeInput({
       etfFlowContext: {
