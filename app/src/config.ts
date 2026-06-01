@@ -90,7 +90,7 @@ export function loadConfig(): AppConfig {
     },
     gemini: {
       apiKey: geminiApiKey,
-      model: optionalEnv('GEMINI_MODEL', 'gemini-2.5-pro'),
+      model: optionalEnv('GEMINI_MODEL', 'gemini-2.5-flash'),
     },
     telegram: {
       botToken: telegramBotToken,

@@ -3,6 +3,7 @@ import type { LlmOverviewClient, LlmGenerateResult, OverviewInput } from '../../
 import { OverviewOutputSchema } from '../../core/src/overview/overview-output.schema.js';
 
 const MAX_RETRIES = 2;
+const MAX_OUTPUT_TOKENS = 8192;
 
 const SYSTEM_PROMPT = `You are a professional crypto market analyst writing pre-session desk briefs for experienced traders.
 
@@ -163,7 +164,7 @@ export class GeminiLlmClient implements LlmOverviewClient {
           contents: [buildGeminiContents(input)],
           config: {
             temperature: 0.2,
-            maxOutputTokens: 4096,
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
             responseMimeType: 'application/json',
           },
         });
