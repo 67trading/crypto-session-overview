@@ -1,7 +1,10 @@
 import { XMLParser } from 'fast-xml-parser';
 import type { EventCollector, NormalizedEvent, NormalizedEventType, CollectorRunContext, CollectorResult } from '../../../service/src/ports.js';
 
-const RSS_URL = 'https://www.federalreserve.gov/feeds/press_releases.xml';
+const RSS_URLS = [
+  'https://www.federalreserve.gov/feeds/press_all.xml',
+  'https://www.federalreserve.gov/feeds/speeches.xml',
+] as const;
 
 const NOW_MS = () => Date.now();
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -54,29 +57,43 @@ export class FedCalendarCollector implements EventCollector {
   readonly sourceName = 'fed-calendar';
 
   async collect(_ctx: CollectorRunContext): Promise<CollectorResult<NormalizedEvent[]>> {
-    const response = await fetch(RSS_URL, {
-      headers: { 'User-Agent': 'trader-agent/session-overview' },
-    });
+    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
+    const fetches = await Promise.allSettled(RSS_URLS.map(async (url) => {
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'trader-agent/session-overview' },
+      });
 
-    if (!response.ok) {
-      throw new Error(`Fed RSS fetch failed: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        throw new Error(`${url}: ${response.status} ${response.statusText}`);
+      }
+
+      const xml = await response.text();
+      const parsed: unknown = parser.parse(xml);
+      const rss = parsed as {
+        rss?: { channel?: { item?: RssItem | RssItem[] } };
+      };
+      const rawItems = rss.rss?.channel?.item;
+      if (rawItems === undefined) return [];
+      return Array.isArray(rawItems) ? rawItems : [rawItems];
+    }));
+
+    const items: RssItem[] = [];
+    const errors: string[] = [];
+    for (const result of fetches) {
+      if (result.status === 'fulfilled') {
+        items.push(...result.value);
+      } else {
+        errors.push(String(result.reason));
+      }
     }
 
-    const xml = await response.text();
-    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
-    const parsed: unknown = parser.parse(xml);
-
-    const rss = parsed as {
-      rss?: { channel?: { item?: RssItem | RssItem[] } };
-    };
-
-    const rawItems = rss.rss?.channel?.item;
-    if (rawItems === undefined) return { status: 'success', data: [], itemCount: 0 };
-
-    const items: RssItem[] = Array.isArray(rawItems) ? rawItems : [rawItems];
+    if (items.length === 0 && errors.length > 0) {
+      return { status: 'failed', data: [], itemCount: 0, error: `Fed RSS fetch failed: ${errors.join('; ')}` };
+    }
 
     const now = NOW_MS();
     const detectedAt = new Date(now).toISOString();
+    const seen = new Set<string>();
 
     const events = items
       .filter((item) => isWithinWindow(item.pubDate))
@@ -102,7 +119,17 @@ export class FedCalendarCollector implements EventCollector {
           dedupeKey,
           relevanceScore,
         };
+      })
+      .filter((event) => {
+        if (seen.has(event.dedupeKey)) return false;
+        seen.add(event.dedupeKey);
+        return true;
       });
-    return { status: 'success', data: events, itemCount: events.length };
+    return {
+      status: errors.length > 0 ? 'partial' : 'success',
+      data: events,
+      itemCount: events.length,
+      ...(errors.length > 0 ? { error: `Fed RSS fetch partially failed: ${errors.join('; ')}` } : {}),
+    };
   }
 }

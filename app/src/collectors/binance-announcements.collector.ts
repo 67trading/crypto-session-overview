@@ -15,10 +15,34 @@ interface BinanceArticle {
 
 interface BinanceResponse {
   data: {
-    articles: BinanceArticle[];
-    total: number;
-  };
+    articles?: BinanceArticle[];
+    total?: number;
+    catalogs?: BinanceCatalog[];
+  } | undefined;
   success: boolean;
+}
+
+interface BinanceCatalog {
+  articles?: BinanceArticle[];
+  catalogs?: BinanceCatalog[];
+}
+
+function collectCatalogArticles(catalogs: BinanceCatalog[] | undefined): BinanceArticle[] {
+  if (catalogs === undefined) return [];
+
+  const articles: BinanceArticle[] = [];
+  for (const catalog of catalogs) {
+    if (Array.isArray(catalog.articles)) articles.push(...catalog.articles);
+    articles.push(...collectCatalogArticles(catalog.catalogs));
+  }
+  return articles;
+}
+
+function extractArticles(parsed: BinanceResponse): BinanceArticle[] {
+  return [
+    ...(Array.isArray(parsed.data?.articles) ? parsed.data.articles : []),
+    ...collectCatalogArticles(parsed.data?.catalogs),
+  ];
 }
 
 function classifyTitle(title: string): {
@@ -77,7 +101,7 @@ export class BinanceAnnouncementsCollector implements EventCollector {
     const detectedAt = new Date(now).toISOString();
     const cutoff = now - SEVEN_DAYS_MS;
 
-    const articles = parsed.data.articles.filter((a) => a.releaseDate >= cutoff);
+    const articles = extractArticles(parsed).filter((a) => a.releaseDate >= cutoff);
 
     if (articles.length === 0) return { status: 'success', data: [], itemCount: 0 };
 

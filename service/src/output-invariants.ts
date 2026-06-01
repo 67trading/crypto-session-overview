@@ -1,4 +1,4 @@
-import type { OverviewOutput } from './ports.js';
+import type { OverviewInput, OverviewOutput } from './ports.js';
 
 // Mirrors rule 2 in the LLM system prompt — these are execution instructions,
 // not market descriptions. Keep context terms like long-heavy / short-heavy allowed.
@@ -57,6 +57,33 @@ function collectWrittenStrings(output: OverviewOutput): string[] {
   ];
 }
 
+function outputText(output: OverviewOutput): string {
+  return collectWrittenStrings(output).join('\n').toLowerCase();
+}
+
+const PRIMARY_UNLOCK_SOURCE = 'mobula-unlocks';
+
+function primaryUnlockSourceSucceeded(input: OverviewInput): boolean {
+  return input.sourceHealth?.collectors.some((collector) =>
+    collector.status === 'success'
+    && (collector.name === PRIMARY_UNLOCK_SOURCE || collector.source === PRIMARY_UNLOCK_SOURCE)
+  ) === true;
+}
+
+function hasEtfFlowSource(input: OverviewInput): boolean {
+  return input.etfFlowContext?.sourceAvailable === true
+    && (input.etfFlowContext.btcFlowUsd !== undefined || input.etfFlowContext.ethFlowUsd !== undefined);
+}
+
+function hasQuotaLimitedMacroSource(input: OverviewInput): boolean {
+  return input.sourceHealth?.collectors.some((collector) =>
+    (collector.name === 'fred-rates' || collector.source === 'fred-rates'
+      || collector.name === 'boj-rates' || collector.source === 'boj-rates')
+    && (collector.status === 'partial' || collector.status === 'skipped')
+    && collector.reasonCode === 'ACCESS_LIMITED_QUOTA'
+  ) === true;
+}
+
 export function scanForForbiddenPhrases(output: OverviewOutput): string[] {
   const violations: string[] = [];
   for (const str of collectWrittenStrings(output)) {
@@ -102,6 +129,39 @@ export function checkOutputInvariants(output: OverviewOutput): string[] {
   if (!output.generatedAtUtc) violations.push('generatedAtUtc must be non-empty');
 
   violations.push(...scanForForbiddenPhrases(output));
+
+  return violations;
+}
+
+export function checkSourceAwareOutputInvariants(output: OverviewOutput, input: OverviewInput): string[] {
+  const text = outputText(output);
+  const violations: string[] = [];
+
+  const mentionsEtfFlow = /\betf\b/.test(text) && /\b(flow|flows|inflow|inflows|outflow|outflows)\b/.test(text);
+  if (mentionsEtfFlow && !hasEtfFlowSource(input)) {
+    violations.push('ETF flow claims require a successful ETF flow source');
+  }
+
+  const saysNoUnlock = /\bno confirmed\b.{0,40}\b(token\s+)?unlocks?\b/.test(text)
+    || /\bno\b\s+(?:confirmed\s+)?(?:single\s+)?(?:token\s+)?unlocks?\b(?:\s+(?:reported|scheduled|detected|found|within|for|in|this))?/.test(text)
+    || /\bwithout\b\s+(?:confirmed\s+)?(?:token\s+)?unlocks?\b/.test(text);
+  if (saysNoUnlock && !primaryUnlockSourceSucceeded(input)) {
+    violations.push('Token unlock absence claims require successful mobula-unlocks primary source');
+  }
+
+  const proxyOnly = input.etfFlowContext?.isProxy === true;
+  const exactFlowWording = /\betf\b.{0,40}\b(flow|flows|inflow|inflows|outflow|outflows)\b/.test(text);
+  const proxyWording = /holdings proxy suggests/.test(text);
+  if (proxyOnly && exactFlowWording && !proxyWording) {
+    violations.push('Issuer proxy ETF context must use holdings proxy wording');
+  }
+
+  const strongMacroClaim = /\b(?:us\s+)?rates?\s+confirm(?:s|ed)?\b/.test(text)
+    || /\bboj\s+confirm(?:s|ed)?\b/.test(text)
+    || /\b(?:fed|fred)\s+(?:data|rates?)\s+confirm(?:s|ed)?\b/.test(text);
+  if (strongMacroClaim && hasQuotaLimitedMacroSource(input)) {
+    violations.push('Strong macro rates claims require complete FRED/BoJ source data');
+  }
 
   return violations;
 }

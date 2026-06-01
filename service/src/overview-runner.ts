@@ -16,7 +16,7 @@ import { OverviewInputBuilder } from './overview-input-builder.js';
 import { OverviewFormatter } from './overview-formatter.js';
 import { computeDataStatus, buildSourceHealthSummary, type EnrichedCollectorQuality } from './source-health-evaluator.js';
 import { computeWhatChanged, firstBriefBullets } from './brief-diff-engine.js';
-import { checkOutputInvariants, hasHardViolations } from './output-invariants.js';
+import { checkOutputInvariants, checkSourceAwareOutputInvariants, hasHardViolations } from './output-invariants.js';
 import { classifyMarketRegime } from './market-regime-classifier.js';
 import { analyzeAltsBreadth } from './alts-breadth-analyzer.js';
 import { buildDerivativesNarrative } from './derivatives-narrative-builder.js';
@@ -54,6 +54,7 @@ function toCollectorQuality(run: CollectorRunRecord): EnrichedCollectorQuality {
     ...(run.dataFreshnessSeconds !== undefined ? { dataFreshnessSeconds: run.dataFreshnessSeconds } : {}),
     ...(run.payloadHash !== undefined ? { payloadHash: run.payloadHash } : {}),
     ...(run.errorMessage !== undefined ? { error: run.errorMessage } : {}),
+    ...(run.reasonCode !== undefined ? { reasonCode: run.reasonCode } : {}),
   };
 }
 
@@ -256,6 +257,7 @@ export class OverviewRunner {
               ...(result.payloadHash !== undefined ? { payloadHash: result.payloadHash } : {}),
               ...(result.dataFreshnessSeconds !== undefined ? { dataFreshnessSeconds: result.dataFreshnessSeconds } : {}),
               ...(result.error !== undefined ? { errorMessage: result.error } : {}),
+              ...(result.reasonCode !== undefined ? { reasonCode: result.reasonCode } : {}),
             });
             return events;
           } catch (err) {
@@ -417,6 +419,7 @@ export class OverviewRunner {
               : 'FAILED',
             itemCount: result.itemCount,
             ...(result.error !== undefined ? { errorMessage: result.error } : {}),
+            ...(result.reasonCode !== undefined ? { reasonCode: result.reasonCode } : {}),
             durationMs: Date.now() - t0,
             source: result.source ?? collector.sourceName,
             ...(result.payloadHash !== undefined ? { payloadHash: result.payloadHash } : {}),
@@ -509,8 +512,12 @@ export class OverviewRunner {
       };
 
       // 11b. Hard invariant sweep — hard violations downgrade to PARTIAL and block publish
-      const invariantViolations = checkOutputInvariants(output);
-      const outputHasHardViolations = hasHardViolations(output);
+      const sourceAwareViolations = checkSourceAwareOutputInvariants(output, augmentedInput);
+      const invariantViolations = [
+        ...checkOutputInvariants(output),
+        ...sourceAwareViolations,
+      ];
+      const outputHasHardViolations = hasHardViolations(output) || sourceAwareViolations.length > 0;
       if (invariantViolations.length > 0) {
         logger.warn({ session, violations: invariantViolations, hard: outputHasHardViolations }, 'Output invariant violations detected');
       }

@@ -186,6 +186,13 @@ describe('validateTriggerBody()', () => {
     expect(result.options.publish).toBe(true);
   });
 
+  it('coerces force to boolean when provided', () => {
+    const result = validateTriggerBody({ ...validBody, force: 1 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.options.force).toBe(true);
+  });
+
   it('omits publish field when not provided', () => {
     const result = validateTriggerBody(validBody);
     expect(result.ok).toBe(true);

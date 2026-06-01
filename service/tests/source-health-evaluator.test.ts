@@ -129,7 +129,7 @@ describe('buildSourceHealthSummary()', () => {
     const collectors: CollectorDataQuality[] = [
       makeCollector('success', 10, 'bybit'),
       makeCollector('failed', 0, 'mobula'),
-      makeCollector('skipped', 0, 'farside'),
+      makeCollector('skipped', 0, 'coinmarketcap-etf'),
       makeCollector('success', 3, 'coingecko'),
     ];
     const summary = buildSourceHealthSummary(collectors);
@@ -152,6 +152,19 @@ describe('buildSourceHealthSummary()', () => {
     expect(summary.collectors[1]).not.toHaveProperty('error');
   });
 
+  it('includes reasonCode field only when present', () => {
+    const withReason: CollectorDataQuality = {
+      name: 'coinmarketcap-etf',
+      status: 'skipped',
+      itemCount: 0,
+      reasonCode: 'NO_STABLE_API',
+    };
+    const withoutReason: CollectorDataQuality = { name: 'bybit', status: 'success', itemCount: 2 };
+    const summary = buildSourceHealthSummary([withReason, withoutReason]);
+    expect(summary.collectors[0]).toHaveProperty('reasonCode', 'NO_STABLE_API');
+    expect(summary.collectors[1]).not.toHaveProperty('reasonCode');
+  });
+
   it('returns zeros when collector list is empty', () => {
     const summary = buildSourceHealthSummary([]);
     expect(summary.healthyCount).toBe(0);
@@ -166,5 +179,40 @@ describe('buildSourceHealthSummary()', () => {
     expect(summary.failedCount).toBe(0);
     expect(summary.skippedCount).toBe(0);
     expect(summary.collectors[0]?.status).toBe('partial');
+  });
+
+  it('preserves FRED/BoJ quota-limited statuses without counting them as failed', () => {
+    const summary = buildSourceHealthSummary([
+      {
+        name: 'fred-rates',
+        status: 'partial',
+        itemCount: 2,
+        reasonCode: 'ACCESS_LIMITED_QUOTA',
+        error: 'FRED DGS2: 429 Too Many Requests',
+      },
+      {
+        name: 'boj-rates',
+        status: 'skipped',
+        itemCount: 0,
+        reasonCode: 'ACCESS_LIMITED_QUOTA',
+        error: 'FRED IRSTCB01JPM156N: 429 Too Many Requests',
+      },
+    ]);
+
+    expect(summary.failedCount).toBe(0);
+    expect(summary.partialCount).toBe(1);
+    expect(summary.skippedCount).toBe(1);
+    expect(summary.collectors).toEqual([
+      expect.objectContaining({
+        name: 'fred-rates',
+        status: 'partial',
+        reasonCode: 'ACCESS_LIMITED_QUOTA',
+      }),
+      expect.objectContaining({
+        name: 'boj-rates',
+        status: 'skipped',
+        reasonCode: 'ACCESS_LIMITED_QUOTA',
+      }),
+    ]);
   });
 });

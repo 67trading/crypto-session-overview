@@ -67,7 +67,7 @@ describe('mergeLiquidityContext()', () => {
 
 describe('mergeEtfFlowContext()', () => {
   it('sets etfFlowContext when data is present', () => {
-    const data: EtfFlowContext = { btcFlowUsd: 100_000_000, date: '2024-01-01', source: 'farside' };
+    const data: EtfFlowContext = { btcFlowUsd: 100_000_000, date: '2024-01-01', source: 'sosovalue' };
     const result = mergeEtfFlowContext(makeBaseInput(), makeResult('success', data));
     expect(result.etfFlowContext).toEqual(data);
   });
@@ -75,6 +75,32 @@ describe('mergeEtfFlowContext()', () => {
   it('leaves input unchanged when data is undefined', () => {
     const result = mergeEtfFlowContext(makeBaseInput(), makeResult('skipped'));
     expect(result.etfFlowContext).toBeUndefined();
+  });
+
+  it('keeps per-asset availability consistent when later ETF collectors fill missing data', () => {
+    const input = mergeEtfFlowContext(makeBaseInput(), makeResult('partial', {
+      btcFlowUsd: 100_000_000,
+      btcSourceAvailable: true,
+      ethSourceAvailable: false,
+      sourceAvailable: true,
+      date: '2026-06-01',
+      source: 'sosovalue',
+    }));
+
+    const result = mergeEtfFlowContext(input, makeResult('success', {
+      btcFlowUsd: 90_000_000,
+      ethFlowUsd: 200_000_000,
+      btcSourceAvailable: true,
+      ethSourceAvailable: true,
+      sourceAvailable: true,
+      date: '2026-06-01',
+      source: 'issuer-holdings-proxy',
+    }));
+
+    expect(result.etfFlowContext?.btcFlowUsd).toBe(100_000_000);
+    expect(result.etfFlowContext?.ethFlowUsd).toBe(200_000_000);
+    expect(result.etfFlowContext?.btcSourceAvailable).toBe(true);
+    expect(result.etfFlowContext?.ethSourceAvailable).toBe(true);
   });
 });
 
@@ -96,6 +122,42 @@ describe('mergeMacroRatesContext()', () => {
     const data: MacroRatesContext = { fedFundsRate: 5.25, us10yYield: 4.5 };
     const result = mergeMacroRatesContext(makeBaseInput(), makeResult('success', data));
     expect(result.macroRatesContext).toEqual(data);
+  });
+
+  it('deep-merges FRED, ECB, BEA, and BoJ macro fields without overwriting unrelated values', () => {
+    const withFred = mergeMacroRatesContext(makeBaseInput(), makeResult('success', {
+      fedFundsRate: 5.25,
+      us10yYield: 4.5,
+      us2yYield: 4.9,
+      pceYoY: 2.8,
+      dataDate: '2026-06-01',
+    }));
+    const withEcb = mergeMacroRatesContext(withFred, makeResult('success', {
+      ecbDepositRate: 4,
+      ecbMainRate: 4.25,
+      dataDate: '2026-06-01',
+    }));
+    const withBea = mergeMacroRatesContext(withEcb, makeResult('success', {
+      gdpGrowthQoQ: 1.4,
+      pcePriceIndexQoQ: 2.1,
+      dataDate: '2026-06-01',
+    }));
+    const result = mergeMacroRatesContext(withBea, makeResult('success', {
+      bojPolicyRate: 0.3,
+      dataDate: '2026-06-01',
+    }));
+
+    expect(result.macroRatesContext).toMatchObject({
+      fedFundsRate: 5.25,
+      us10yYield: 4.5,
+      us2yYield: 4.9,
+      pceYoY: 2.8,
+      ecbDepositRate: 4,
+      ecbMainRate: 4.25,
+      gdpGrowthQoQ: 1.4,
+      pcePriceIndexQoQ: 2.1,
+      bojPolicyRate: 0.3,
+    });
   });
 
   it('leaves input unchanged when data is undefined', () => {

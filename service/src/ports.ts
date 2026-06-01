@@ -37,6 +37,7 @@ export type CollectorDataQuality = {
   status: 'success' | 'partial' | 'failed' | 'skipped';
   itemCount: number;
   error?: string;
+  reasonCode?: CollectorReasonCode;
 };
 
 export type DataQualityInfo = {
@@ -111,6 +112,16 @@ export type CollectorRunContext = {
   lookaheadHours: number;
 };
 
+export type CollectorReasonCode =
+  | 'MISSING_API_KEY'
+  | 'ACCESS_LIMITED'
+  | 'ACCESS_LIMITED_QUOTA'
+  | 'DEPRECATED_ENDPOINT'
+  | 'BLOCKED_BY_CLOUDFLARE'
+  | 'NO_STABLE_API'
+  | 'TRANSIENT_NETWORK_ERROR'
+  | 'PARSER_ERROR';
+
 export type CollectorResult<T> = {
   status: 'success' | 'partial' | 'failed' | 'skipped';
   data?: T;
@@ -119,6 +130,7 @@ export type CollectorResult<T> = {
   dataFreshnessSeconds?: number;
   durationMs?: number;
   error?: string;
+  reasonCode?: CollectorReasonCode;
   itemCount: number;
 };
 
@@ -139,6 +151,10 @@ export type EtfFlowContext = {
   ethFlowUsd?: number;
   date: string;
   source: string;
+  sourceAvailable?: boolean;
+  btcSourceAvailable?: boolean;
+  ethSourceAvailable?: boolean;
+  isProxy?: boolean;
 };
 
 export type OptionsContext = {
@@ -189,6 +205,7 @@ export type SourceHealthSummary = {
     dataFreshnessSeconds?: number;
     payloadHash?: string;
     error?: string;
+    reasonCode?: CollectorReasonCode;
   }[];
   healthyCount: number;
   partialCount: number;
@@ -295,6 +312,7 @@ export type CollectorRunRecord = {
   status: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'SKIPPED';
   itemCount: number;
   errorMessage?: string;
+  reasonCode?: CollectorReasonCode;
   durationMs?: number;
   dataFreshnessSeconds?: number;
   fallbackUsed?: boolean;

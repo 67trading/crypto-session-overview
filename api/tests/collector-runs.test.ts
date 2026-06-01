@@ -99,6 +99,21 @@ describe('GET /collector-runs — other filters', () => {
     expect(res.body).toEqual({ items: [], count: 0 });
   });
 
+  it('preserves reasonCode in collector run response payloads', async () => {
+    const run: CollectorRunRecord = {
+      collectorName: 'coinmarketcap-etf',
+      startedAt: new Date('2026-01-01T00:00:00Z'),
+      status: 'SKIPPED',
+      itemCount: 0,
+      reasonCode: 'NO_STABLE_API',
+    };
+    listCollectorRuns = vi.fn().mockResolvedValue([run]) as unknown as typeof listCollectorRuns;
+
+    const res = await simulateCollectorRunsHandler({}, listCollectorRuns);
+
+    expect(res.body).toEqual({ items: [run], count: 1 });
+  });
+
   it('forwards collectorName filter', async () => {
     await simulateCollectorRunsHandler({ collectorName: 'calendar' }, listCollectorRuns);
     expect(listCollectorRuns).toHaveBeenCalledWith(expect.objectContaining({ collectorName: 'calendar' }));

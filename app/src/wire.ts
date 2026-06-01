@@ -7,11 +7,13 @@ import { BlsCalendarCollector } from './collectors/bls-calendar.collector.js';
 import { SecRssCollector } from './collectors/sec-rss.collector.js';
 import { CoinMarketCalCollector } from './collectors/coinmarketcal.collector.js';
 import { BinanceAnnouncementsCollector } from './collectors/binance-announcements.collector.js';
-import { TokenUnlocksCollector } from './collectors/token-unlocks.collector.js';
 import { MobulaUnlocksCollector } from './collectors/mobula-unlocks.collector.js';
 import { DeribitOptionsCollector } from './collectors/deribit-options.collector.js';
-import { FarsideEtfCollector } from './collectors/farside-etf.collector.js';
+import { SoSoValueEtfCollector } from './collectors/sosovalue-etf.collector.js';
+import { CoinMarketCapEtfCollector } from './collectors/coinmarketcap-etf.collector.js';
+import { IssuerHoldingsProxyCollector } from './collectors/issuer-holdings-proxy.collector.js';
 import { CoinGeckoBreadthCollector } from './collectors/coingecko-breadth.collector.js';
+import { FredClient } from './collectors/fred-client.js';
 import { FredRatesCollector } from './collectors/fred-rates.collector.js';
 import { BeaGdpCollector } from './collectors/bea-gdp.collector.js';
 import { EcbRatesCollector } from './collectors/ecb-rates.collector.js';
@@ -67,12 +69,9 @@ export function wire(config: AppConfig, logger: LoggerLike): SessionOverviewServ
     new BlsCalendarCollector(),
     new SecRssCollector(),
     new BinanceAnnouncementsCollector(),
-    // Mobula replaces the plain DefiLlama unlock collector when API key is set
-    ...(config.mobula !== undefined
-      ? [new MobulaUnlocksCollector(config.mobula.apiKey, [
-          ...config.symbols.core, ...config.symbols.major,
-        ])]
-      : [new TokenUnlocksCollector()]),
+    new MobulaUnlocksCollector(config.mobula?.apiKey, [
+      ...config.symbols.core, ...config.symbols.major,
+    ]),
   ];
 
   const coinmarketcalApiKey = process.env['COINMARKETCAL_API_KEY'];
@@ -85,16 +84,19 @@ export function wire(config: AppConfig, logger: LoggerLike): SessionOverviewServ
     contextCollectorEntry(new DefiLlamaStablecoinsCollector(), mergeStablecoinContext),
     contextCollectorEntry(new DefiLlamaChainsCollector(), mergeChainFlowContext),
     contextCollectorEntry(new DeribitOptionsCollector(), mergeOptionsContext),
-    contextCollectorEntry(new FarsideEtfCollector(), mergeEtfFlowContext),
+    contextCollectorEntry(new SoSoValueEtfCollector(), mergeEtfFlowContext),
+    contextCollectorEntry(new CoinMarketCapEtfCollector(), mergeEtfFlowContext),
+    contextCollectorEntry(new IssuerHoldingsProxyCollector(), mergeEtfFlowContext),
     contextCollectorEntry(new CoinGeckoBreadthCollector(), mergeBreadthContext),
     // Europe/Asia macro — public APIs, no key needed
     contextCollectorEntry(new EcbRatesCollector(), mergeMacroRatesContext),
     contextCollectorEntry(new EurostatInflationCollector(), mergeMacroRatesContext),
   ];
   if (config.fred !== undefined) {
-    contextCollectors.push(contextCollectorEntry(new FredRatesCollector(config.fred.apiKey), mergeMacroRatesContext));
+    const fredClient = new FredClient();
+    contextCollectors.push(contextCollectorEntry(new FredRatesCollector(config.fred.apiKey, fredClient), mergeMacroRatesContext));
     // BoJ rate via FRED (reuses FRED key)
-    contextCollectors.push(contextCollectorEntry(new BojRatesCollector(config.fred.apiKey), mergeMacroRatesContext));
+    contextCollectors.push(contextCollectorEntry(new BojRatesCollector(config.fred.apiKey, fredClient), mergeMacroRatesContext));
   }
   if (config.bea !== undefined) {
     contextCollectors.push(contextCollectorEntry(new BeaGdpCollector(config.bea.apiKey), mergeMacroRatesContext));

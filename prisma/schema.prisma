@@ -77,6 +77,7 @@ model CollectorRun {
   status               String
   itemCount            Int
   errorMessage         String?
+  reasonCode           String?
   durationMs           Int?
   dataFreshnessSeconds Int?
   fallbackUsed         Boolean?

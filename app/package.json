@@ -5,6 +5,7 @@
   "main": "./src/index.ts",
   "scripts": {
     "start": "node --loader ts-node/esm src/index.ts",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

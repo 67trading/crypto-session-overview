@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { scanForForbiddenPhrases, checkOutputInvariants, hasHardViolations, FORBIDDEN_PHRASES } from '../src/output-invariants.js';
-import type { OverviewOutput } from '../src/ports.js';
+import { scanForForbiddenPhrases, checkOutputInvariants, checkSourceAwareOutputInvariants, hasHardViolations, FORBIDDEN_PHRASES } from '../src/output-invariants.js';
+import type { OverviewInput, OverviewOutput } from '../src/ports.js';
 
 function makeOutput(overrides: Partial<OverviewOutput> = {}): OverviewOutput {
   return {
@@ -20,6 +20,27 @@ function makeOutput(overrides: Partial<OverviewOutput> = {}): OverviewOutput {
     events: { summary: 'Light macro calendar.', upcoming: [{ title: 'CPI Release', time: '2026-01-02T13:30:00Z', importance: 'critical' }] },
     scenarios: { reclaim: 'Continuation toward ATH.', rejection: 'Pullback to support.', chop: 'Range persists.' },
     note: 'No caveats.',
+    ...overrides,
+  };
+}
+
+function makeInput(overrides: Partial<OverviewInput> = {}): OverviewInput {
+  return {
+    request: {
+      session: 'US_CRYPTO',
+      createdAt: '2026-01-01T00:00:00Z',
+      timezone: 'UTC',
+      allowedTimeframes: ['Weekly', 'Daily', '4H', 'Session'],
+      forbiddenTimeframes: ['1H', '15m', '5m'],
+    },
+    universe: { coreSymbols: ['BTCUSDT'], majorSymbols: [], watchSymbols: [] },
+    marketContext: { btcTone: 'neutral', ethVsBtc: 'in_line' },
+    levels: {},
+    sessionContext: null,
+    derivativesContext: {},
+    eventsForSession: [],
+    activeSetups: [],
+    dataQuality: { collectors: [], missingSources: [], failedSources: [] },
     ...overrides,
   };
 }
@@ -200,6 +221,116 @@ describe('checkOutputInvariants()', () => {
     const output = makeOutput({ scenarios: { reclaim: 'Go long.', rejection: 'x', chop: 'x' } });
     const violations = checkOutputInvariants(output);
     expect(violations.some((v) => v.includes('go long'))).toBe(true);
+  });
+});
+
+describe('checkSourceAwareOutputInvariants()', () => {
+  it('flags ETF flow claims when no ETF source is available', () => {
+    const output = makeOutput({ note: 'BTC ETF flows were positive.' });
+    const violations = checkSourceAwareOutputInvariants(output, makeInput());
+    expect(violations).toContain('ETF flow claims require a successful ETF flow source');
+  });
+
+  it('allows ETF flow claims when ETF context has sourceAvailable', () => {
+    const output = makeOutput({ note: 'BTC ETF flows were positive.' });
+    const input = makeInput({
+      etfFlowContext: { btcFlowUsd: 10_000_000, date: '2026-01-01', source: 'sosovalue', sourceAvailable: true },
+    });
+    expect(checkSourceAwareOutputInvariants(output, input)).toHaveLength(0);
+  });
+
+  it('flags no-unlock claims unless mobula-unlocks succeeded', () => {
+    const output = makeOutput({ events: { summary: 'No confirmed token unlocks for this session.', upcoming: [] } });
+    const violations = checkSourceAwareOutputInvariants(output, makeInput());
+    expect(violations).toContain('Token unlock absence claims require successful mobula-unlocks primary source');
+  });
+
+  it('does not treat unrelated "no" plus explicit unlock report as an absence claim', () => {
+    const output = makeOutput({
+      events: {
+        summary: 'No major macro catalysts today; token unlocks from Arbitrum confirmed at 14:00 UTC.',
+        upcoming: [],
+      },
+    });
+    const violations = checkSourceAwareOutputInvariants(output, makeInput());
+    expect(violations).not.toContain('Token unlock absence claims require successful mobula-unlocks primary source');
+  });
+
+  it('allows no-unlock claims when mobula-unlocks succeeded', () => {
+    const output = makeOutput({ events: { summary: 'No confirmed token unlocks for this session.', upcoming: [] } });
+    const input = makeInput({
+      sourceHealth: {
+        collectors: [{ name: 'mobula-unlocks', source: 'mobula-unlocks', status: 'success', itemCount: 0 }],
+        healthyCount: 1,
+        partialCount: 0,
+        failedCount: 0,
+        skippedCount: 0,
+      },
+    });
+    expect(checkSourceAwareOutputInvariants(output, input)).toHaveLength(0);
+  });
+
+  it('flags strong rates claims when FRED is quota-limited', () => {
+    const output = makeOutput({ note: 'US rates confirm risk-off pressure into the session.' });
+    const input = makeInput({
+      sourceHealth: {
+        collectors: [{
+          name: 'fred-rates',
+          source: 'fred-rates',
+          status: 'partial',
+          itemCount: 2,
+          reasonCode: 'ACCESS_LIMITED_QUOTA',
+        }],
+        healthyCount: 0,
+        partialCount: 1,
+        failedCount: 0,
+        skippedCount: 0,
+      },
+    });
+
+    expect(checkSourceAwareOutputInvariants(output, input)).toContain('Strong macro rates claims require complete FRED/BoJ source data');
+  });
+
+  it('flags strong BoJ claims when BoJ via FRED is skipped for quota', () => {
+    const output = makeOutput({ note: 'BoJ confirms a supportive macro backdrop.' });
+    const input = makeInput({
+      sourceHealth: {
+        collectors: [{
+          name: 'boj-rates',
+          source: 'boj-rates',
+          status: 'skipped',
+          itemCount: 0,
+          reasonCode: 'ACCESS_LIMITED_QUOTA',
+        }],
+        healthyCount: 0,
+        partialCount: 0,
+        failedCount: 0,
+        skippedCount: 1,
+      },
+    });
+
+    expect(checkSourceAwareOutputInvariants(output, input)).toContain('Strong macro rates claims require complete FRED/BoJ source data');
+  });
+
+  it('allows cautious macro wording when FRED is quota-limited', () => {
+    const output = makeOutput({ note: 'US rates context is partial because some FRED series were rate-limited.' });
+    const input = makeInput({
+      sourceHealth: {
+        collectors: [{
+          name: 'fred-rates',
+          source: 'fred-rates',
+          status: 'partial',
+          itemCount: 2,
+          reasonCode: 'ACCESS_LIMITED_QUOTA',
+        }],
+        healthyCount: 0,
+        partialCount: 1,
+        failedCount: 0,
+        skippedCount: 0,
+      },
+    });
+
+    expect(checkSourceAwareOutputInvariants(output, input)).toHaveLength(0);
   });
 });
 
