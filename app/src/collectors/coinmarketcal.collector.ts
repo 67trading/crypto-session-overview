@@ -129,7 +129,7 @@ export class CoinMarketCalCollector implements EventCollector {
       return {
         eventId: dedupeKey,
         eventType,
-        category: 'onchain',
+        category: 'crypto',
         ...(asset !== undefined ? { asset } : {}),
         title: event.title.en,
         scheduledTime: new Date(event.date_event).toISOString(),

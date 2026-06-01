@@ -98,7 +98,7 @@ export class SecRssCollector implements EventCollector {
         return {
           eventId: dedupeKey,
           eventType,
-          category: 'regulatory',
+          category: 'exchange',
           title,
           ...(entry.updated !== undefined ? { scheduledTime: new Date(entry.updated).toISOString() } : {}),
           detectedAt,

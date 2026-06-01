@@ -1,4 +1,4 @@
-import type { DataStatus, PrecomputedRegime } from './ports.js';
+import type { DataStatus, MarketRegime, PrecomputedRegime } from './ports.js';
 
 export type { PrecomputedRegime } from './ports.js';
 

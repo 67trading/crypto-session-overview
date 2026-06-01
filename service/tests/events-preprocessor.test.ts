@@ -20,9 +20,9 @@ function makeEvent(
     confidence: 'high',
     dedupeKey: overrides.dedupeKey ?? `key-${id}`,
     relevanceScore: overrides.relevanceScore ?? 50,
-    scheduledTime: overrides.scheduledTime,
-    asset: overrides.asset,
-    exchange: overrides.exchange,
+    ...(overrides.scheduledTime !== undefined ? { scheduledTime: overrides.scheduledTime } : {}),
+    ...(overrides.asset !== undefined ? { asset: overrides.asset } : {}),
+    ...(overrides.exchange !== undefined ? { exchange: overrides.exchange } : {}),
   };
 }
 

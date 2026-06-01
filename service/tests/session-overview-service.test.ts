@@ -12,6 +12,7 @@ function makeMockRepo(overrides: Record<string, ReturnType<typeof vi.fn>> = {}) 
     saveOverview: noopFn,
     updateOverviewTelegramPosts: noopFn,
     getLatestOverview: noopFn,
+    getOverviewByRunKey: noopFn,
     listOverviews: noopFn,
     saveTelegramPost: noopFn,
     saveLlmUsage: noopFn,
@@ -66,7 +67,7 @@ describe('SessionOverviewService.listTelegramPosts()', () => {
 
     expect(result).toBe(records);
     expect(result).toHaveLength(2);
-    expect(result[0].messageId).toBe('msg-101');
+    expect(result[0]?.messageId).toBe('msg-101');
   });
 
   it('returns an empty array when repository returns none', async () => {

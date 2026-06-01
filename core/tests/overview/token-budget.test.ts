@@ -43,8 +43,9 @@ function makeBaseInput(eventCount = 0, setupCount = 0): OverviewInput {
     activeSetups: Array.from({ length: setupCount }, (_, i) => ({
       setupId: `setup-${i}`,
       symbol: 'BTCUSDT',
-      model: 'LIQUIDITY_GRAB',
-      side: 'long',
+      direction: 'LONG' as const,
+      setupType: 'RANGE_HIGH',
+      timeframeSource: 'Daily' as const,
       status: 'active',
     })),
   };

@@ -48,11 +48,7 @@ async function parseJson<T>(res: Response, label: string): Promise<T> {
 }
 
 export class BybitHttpClient {
-  constructor(
-    private readonly baseUrl: string,
-    private readonly apiKey: string,
-    private readonly apiSecret: string,
-  ) {}
+  constructor(private readonly baseUrl: string) {}
 
   async getKlines(
     symbol: string,

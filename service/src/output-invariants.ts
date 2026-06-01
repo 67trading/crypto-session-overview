@@ -1,16 +1,33 @@
 import type { OverviewOutput } from './ports.js';
 
-// Mirrors rule 2 in the LLM system prompt — any of these appearing in LLM-written fields is a violation
+// Mirrors rule 2 in the LLM system prompt — these are execution instructions,
+// not market descriptions. Keep context terms like long-heavy / short-heavy allowed.
 export const FORBIDDEN_PHRASES = [
   'buy here',
   'sell here',
   'go long',
   'go short',
+  'open long',
+  'open short',
   'enter at',
   'exit at',
+  'take the trade',
   'take a position',
   'place a trade',
+  'stop loss',
+  'take profit',
+  'position size',
+  'use leverage',
+  'buy above',
+  'sell below',
+  'long from',
+  'short from',
 ] as const;
+
+const FORBIDDEN_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  { label: 'risk X%', pattern: /\brisk\s+\d+(?:\.\d+)?\s*%/i },
+  { label: 'risk X percent', pattern: /\brisk\s+\d+(?:\.\d+)?\s*percent\b/i },
+];
 
 export type ForbiddenPhrase = (typeof FORBIDDEN_PHRASES)[number];
 
@@ -47,6 +64,11 @@ export function scanForForbiddenPhrases(output: OverviewOutput): string[] {
     for (const phrase of FORBIDDEN_PHRASES) {
       if (lower.includes(phrase)) {
         violations.push(`"${phrase}" in: "${str.slice(0, 120)}"`);
+      }
+    }
+    for (const { label, pattern } of FORBIDDEN_PATTERNS) {
+      if (pattern.test(str)) {
+        violations.push(`"${label}" in: "${str.slice(0, 120)}"`);
       }
     }
   }

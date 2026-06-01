@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.code-review-graph
+.claude
+.vite
+*.log
+.env
+mydatabase.db
+session-overview.db

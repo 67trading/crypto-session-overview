@@ -4,7 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -32,6 +32,9 @@ model SessionOverview {
   crossMarketJson  String?
   etfFlowJson      String?
   optionsJson      String?
+  sessionWindowStart DateTime?
+  sessionWindowEnd   DateTime?
+  runKey             String?   @unique
   createdAt        DateTime @default(now())
 }
 
@@ -86,13 +89,13 @@ model CollectorRun {
 model TelegramOverviewPost {
   id           String   @id @default(uuid())
   overviewId   String
-  messageId    String
+  messageId    String?
   chatId       String
   session      String
   // Patch 3 additions
   messageIndex Int?
   text         String?
-  status       String   @default("sent")
+  status       String   @default("SENT")
   errorMessage String?
   postedAt     DateTime @default(now())
 }

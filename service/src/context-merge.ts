@@ -24,7 +24,11 @@ export function mergeLiquidityContext(
     ...input,
     liquidityContext: {
       clusters: [...existing.clusters, ...result.data.clusters],
-      dataFreshnessSeconds: result.data.dataFreshnessSeconds ?? existing.dataFreshnessSeconds,
+      ...(result.data.dataFreshnessSeconds !== undefined
+        ? { dataFreshnessSeconds: result.data.dataFreshnessSeconds }
+        : existing.dataFreshnessSeconds !== undefined
+        ? { dataFreshnessSeconds: existing.dataFreshnessSeconds }
+        : {}),
     },
   };
 }

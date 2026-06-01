@@ -89,6 +89,7 @@ describe('OverviewInputBuilder.build()', () => {
       sessionContext: null,
       levels: {},
       tokenBudget: 100_000,
+      dataQuality: { collectors: [], missingSources: [], failedSources: [] },
     });
 
     expect(result.request.session).toBe('ASIA_CRYPTO');
@@ -109,6 +110,7 @@ describe('OverviewInputBuilder.build()', () => {
       sessionContext: null,
       levels: {},
       tokenBudget: 100_000,
+      dataQuality: { collectors: [], missingSources: [], failedSources: [] },
     });
 
     expect(result.eventsForSession[0]?.eventId).toBe('high');
@@ -130,6 +132,7 @@ describe('OverviewInputBuilder.build()', () => {
       sessionContext: null,
       levels,
       tokenBudget: 100_000,
+      dataQuality: { collectors: [], missingSources: [], failedSources: [] },
     });
 
     expect(result.levels['BTCUSDT']).toEqual(levels['BTCUSDT']);
@@ -154,6 +157,7 @@ describe('OverviewInputBuilder.build()', () => {
       sessionContext: null,
       levels: {},
       tokenBudget: 100_000,
+      dataQuality: { collectors: [], missingSources: [], failedSources: [] },
     });
 
     expect(result.derivativesContext['BTCUSDT']).toEqual(derivativesContext['BTCUSDT']);
@@ -161,7 +165,7 @@ describe('OverviewInputBuilder.build()', () => {
 
   it('passes activeSetups through unchanged', () => {
     const activeSetups: ActiveOverviewSetup[] = [
-      { setupId: 's1', symbol: 'BTCUSDT', model: 'OB', side: 'long', status: 'WATCHING' },
+      { setupId: 's1', symbol: 'BTCUSDT', direction: 'LONG' as const, setupType: 'OB', timeframeSource: 'Daily' as const, status: 'WATCHING' },
     ];
     const result = builder.build({
       session: 'US_CRYPTO',
@@ -173,6 +177,7 @@ describe('OverviewInputBuilder.build()', () => {
       sessionContext: null,
       levels: {},
       tokenBudget: 100_000,
+      dataQuality: { collectors: [], missingSources: [], failedSources: [] },
     });
 
     expect(result.activeSetups).toEqual(activeSetups);
@@ -193,6 +198,7 @@ describe('OverviewInputBuilder.build()', () => {
       sessionContext: null,
       levels,
       tokenBudget: 100_000,
+      dataQuality: { collectors: [], missingSources: [], failedSources: [] },
     });
 
     expect(result.marketContext.btcTone).toBe('constructive');
@@ -213,6 +219,7 @@ describe('OverviewInputBuilder.build()', () => {
       sessionContext: null,
       levels,
       tokenBudget: 100_000,
+      dataQuality: { collectors: [], missingSources: [], failedSources: [] },
     });
 
     expect(result.marketContext.btcTone).toBe('bullish_breakout');
@@ -233,6 +240,7 @@ describe('OverviewInputBuilder.build()', () => {
       sessionContext: null,
       levels: {},
       tokenBudget: 100_000,
+      dataQuality: { collectors: [], missingSources: [], failedSources: [] },
     });
 
     expect(result.marketContext.ethVsBtc).toBe('outperforming');
@@ -253,6 +261,7 @@ describe('OverviewInputBuilder.build()', () => {
       sessionContext: null,
       levels: {},
       tokenBudget: 100_000,
+      dataQuality: { collectors: [], missingSources: [], failedSources: [] },
     });
 
     expect(result.marketContext.ethVsBtc).toBe('underperforming');
@@ -271,6 +280,7 @@ describe('OverviewInputBuilder.build()', () => {
       sessionContext: null,
       levels: {},
       tokenBudget: 10, // very small budget
+      dataQuality: { collectors: [], missingSources: [], failedSources: [] },
     });
 
     // Should have truncated to fit budget

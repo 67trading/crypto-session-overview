@@ -1,8 +1,7 @@
+import { GoogleGenAI } from '@google/genai';
 import type { LlmOverviewClient, LlmGenerateResult, OverviewInput } from '../../service/src/ports.js';
 import { OverviewOutputSchema } from '../../core/src/overview/overview-output.schema.js';
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_VERSION = '2023-06-01';
 const MAX_RETRIES = 2;
 
 const SYSTEM_PROMPT = `You are a professional crypto market analyst writing pre-session desk briefs for experienced traders.
@@ -108,21 +107,35 @@ Required JSON schema (all fields required):
   "note": "string — closing note on data quality, key watchpoints, or caveats; always present"
 }`;
 
-type AnthropicUsage = {
-  input_tokens: number;
-  output_tokens: number;
+type GeminiModelsApi = {
+  generateContent(input: {
+    model: string;
+    contents: string[];
+    config: {
+      temperature: number;
+      maxOutputTokens: number;
+      responseMimeType: string;
+    };
+  }): Promise<{
+    text?: string;
+    usageMetadata?: {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      totalTokenCount?: number;
+    };
+  }>;
 };
 
-type AnthropicResponse = {
-  content: Array<{ type: string; text?: string }>;
-  usage?: AnthropicUsage;
-};
+export class GeminiLlmClient implements LlmOverviewClient {
+  private readonly models: GeminiModelsApi;
 
-export class AnthropicLlmClient implements LlmOverviewClient {
   constructor(
     private readonly apiKey: string,
     private readonly model: string,
-  ) {}
+    models?: GeminiModelsApi,
+  ) {
+    this.models = models ?? (new GoogleGenAI({ apiKey }).models as GeminiModelsApi);
+  }
 
   get modelName(): string {
     return this.model;
@@ -134,39 +147,28 @@ export class AnthropicLlmClient implements LlmOverviewClient {
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       const t0 = Date.now();
       try {
-        const response = await fetch(ANTHROPIC_API_URL, {
-          method: 'POST',
-          headers: {
-            'x-api-key': this.apiKey,
-            'anthropic-version': ANTHROPIC_VERSION,
-            'content-type': 'application/json',
+        const response = await this.models.generateContent({
+          model: this.model,
+          contents: [buildGeminiContents(input)],
+          config: {
+            temperature: 0.2,
+            maxOutputTokens: 4096,
+            responseMimeType: 'application/json',
           },
-          body: JSON.stringify({
-            model: this.model,
-            max_tokens: 4096,
-            system: SYSTEM_PROMPT,
-            messages: [{ role: 'user', content: JSON.stringify(input) }],
-          }),
         });
 
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(`Anthropic API error ${response.status}: ${text}`);
-        }
-
-        const data = (await response.json()) as AnthropicResponse;
         const durationMs = Date.now() - t0;
 
-        const textBlock = data.content.find((c) => c.type === 'text');
-        if (textBlock === undefined || textBlock.text === undefined) {
-          throw new Error('Anthropic API returned no text content');
+        const text = response.text;
+        if (typeof text !== 'string' || text.trim() === '') {
+          throw new Error('Gemini API returned no text content');
         }
 
         let parsed: unknown;
         try {
-          parsed = JSON.parse(textBlock.text);
+          parsed = JSON.parse(text);
         } catch {
-          throw new Error(`Failed to parse LLM response as JSON: ${textBlock.text.slice(0, 200)}`);
+          throw new Error(`Failed to parse LLM response as JSON: ${text.slice(0, 200)}`);
         }
 
         const result = OverviewOutputSchema.safeParse(parsed);
@@ -174,10 +176,11 @@ export class AnthropicLlmClient implements LlmOverviewClient {
           throw new Error(`LLM response failed schema validation: ${result.error.message}`);
         }
 
-        const usage = data.usage !== undefined ? {
-          inputTokens: data.usage.input_tokens,
-          outputTokens: data.usage.output_tokens,
-          totalTokens: data.usage.input_tokens + data.usage.output_tokens,
+        const usage = response.usageMetadata !== undefined ? {
+          inputTokens: response.usageMetadata.promptTokenCount ?? 0,
+          outputTokens: response.usageMetadata.candidatesTokenCount ?? 0,
+          totalTokens: response.usageMetadata.totalTokenCount
+            ?? (response.usageMetadata.promptTokenCount ?? 0) + (response.usageMetadata.candidatesTokenCount ?? 0),
           durationMs,
         } : undefined;
 
@@ -195,4 +198,12 @@ export class AnthropicLlmClient implements LlmOverviewClient {
 
     throw lastError ?? new Error('LLM generation failed after retries');
   }
+}
+
+function buildGeminiContents(input: OverviewInput): string {
+  return [
+    `SYSTEM:\n${SYSTEM_PROMPT}`,
+    'USER:',
+    JSON.stringify(input),
+  ].join('\n\n');
 }

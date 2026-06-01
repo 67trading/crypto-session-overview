@@ -90,7 +90,7 @@ export class TokenUnlocksCollector implements EventCollector {
         results.push({
           eventId: dedupeKey,
           eventType: 'token_unlock',
-          category: 'onchain',
+          category: 'crypto',
           asset: emission.symbol,
           title: `${emission.name} (${emission.symbol}) Token Unlock`,
           scheduledTime: new Date(ev.timestamp * 1000).toISOString(),

@@ -1,0 +1,28 @@
+{
+  "name": "pre-session-crypto-brief",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "core",
+    "service",
+    "api",
+    "app"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "build": "tsc --build api/tsconfig.build.json",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "start": "npm --workspace @trader-agent/session-overview-app start",
+    "prisma:generate": "npm --workspace @trader-agent/session-overview-app exec -- prisma generate",
+    "prisma:migrate:dev": "npm --workspace @trader-agent/session-overview-app exec -- prisma migrate dev",
+    "prisma:migrate:deploy": "npm --workspace @trader-agent/session-overview-app exec -- prisma migrate deploy",
+    "prisma:studio": "npm --workspace @trader-agent/session-overview-app exec -- prisma studio",
+    "prisma:push": "npm --workspace @trader-agent/session-overview-app exec -- prisma db push",
+    "postinstall": "npm run prisma:generate"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0",
+    "ts-node": "^10.9.0"
+  }
+}

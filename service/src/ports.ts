@@ -1,3 +1,19 @@
+import type {
+  CryptoSession,
+  HtfCandle,
+  NormalizedEventType,
+  EventCategory,
+  EventImportance,
+  NormalizedEvent,
+  DerivativesContext,
+  ActiveOverviewSetup,
+  HtfLevelsSnapshot,
+  OverviewOutput,
+  MarketRegime,
+  DataStatusValue,
+  DataStatus,
+} from '../../core/src/index.js';
+
 // ─── Domain types (imported from session-overview-core) ──────────────────────
 
 export type {
@@ -297,6 +313,10 @@ export type OverviewRecord = {
   promptVersion?: string;
   model?: string;
   sourceHealth?: SourceHealthSummary;
+  dataStatus?: DataStatus;
+  sessionWindowStart?: Date;
+  sessionWindowEnd?: Date;
+  runKey?: string;
   createdAt?: Date;
   crossMarket?: unknown;
   etfFlow?: unknown;
@@ -311,11 +331,13 @@ export type OverviewFilters = {
 
 export type TelegramPostRecord = {
   overviewId: string;
-  messageId: string;
+  messageId?: string;
   chatId: string;
   session: CryptoSession;
   messageIndex?: number;
   text?: string;
+  status?: 'SENT' | 'FAILED';
+  errorMessage?: string;
 };
 
 export type LlmUsageRecord = {
@@ -361,6 +383,7 @@ export interface SessionOverviewRepository {
   saveOverview(record: OverviewRecord): Promise<string>;
   updateOverviewTelegramPosts(id: string, postIds: string[]): Promise<void>;
   getLatestOverview(session: CryptoSession): Promise<OverviewRecord | null>;
+  getOverviewByRunKey(runKey: string): Promise<OverviewRecord | null>;
   listOverviews(filters: OverviewFilters): Promise<OverviewRecord[]>;
   saveTelegramPost(post: TelegramPostRecord): Promise<string>;
   saveLlmUsage(usage: LlmUsageRecord): Promise<string>;
@@ -373,6 +396,7 @@ export interface SessionOverviewRepository {
 // ─── Publisher port ────────────────────────────────────────────────────────────
 
 export interface OverviewPublisher {
+  readonly chatId?: string;
   publish(report: string, session: CryptoSession): Promise<string[]>;
 }
 

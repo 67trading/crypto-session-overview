@@ -4,10 +4,12 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": {
-    ".": "./dist/index.js"
+  "exports": { ".": "./dist/index.js" },
+  "scripts": {
+    "build": "tsc --build tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
-  "dependencies": {
-    "zod": "^3.23.0"
-  }
+  "dependencies": { "zod": "^3.23.0" },
+  "devDependencies": { "vitest": "^1.6.0" }
 }

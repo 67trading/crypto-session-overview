@@ -103,10 +103,10 @@ describe('OverviewFormatter.format()', () => {
     expect(result).toContain('Generated:');
   });
 
-  it('header includes UTC time and Sofia time', () => {
+  it('header includes UTC time and Frankfurt time', () => {
     const result = formatter.format(makeOutput({ generatedAtUtc: '2026-05-18T22:30:00.000Z' }));
     expect(result).toContain('UTC');
-    expect(result).toContain('Sofia');
+    expect(result).toContain('Frankfurt');
   });
 
   it('includes market regime and confidence on separate lines', () => {
@@ -273,5 +273,16 @@ describe('OverviewFormatter.splitForTelegram()', () => {
 
     const chunks = formatter.splitForTelegram(report);
     expect(chunks.length).toBeGreaterThan(1);
+  });
+
+  it('splits a single line longer than 4096 chars into safe chunks', () => {
+    const report = 'x'.repeat(5000);
+    const chunks = formatter.splitForTelegram(report);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.join('')).toBe(report);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(4096);
+    }
   });
 });

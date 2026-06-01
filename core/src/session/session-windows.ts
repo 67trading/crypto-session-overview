@@ -36,3 +36,16 @@ export function getPreviousSession(session: CryptoSession): CryptoSession {
     case 'US_CRYPTO': return 'EUROPE_CRYPTO';
   }
 }
+
+// Returns the boundary for the session that preceded `session` relative to utcDate,
+// shifting to the prior calendar day when the previous session runs later in the UTC
+// day than the current one (e.g. ASIA at 00:00 → previous US at 13:00 was yesterday).
+export function getPreviousSessionBoundaryForDate(session: CryptoSession, utcDate: Date): SessionBoundary {
+  const prev = getPreviousSession(session);
+  const prevWindow = SESSION_WINDOWS[prev];
+  const currentWindow = SESSION_WINDOWS[session];
+  const date = prevWindow.startUtcHour > currentWindow.startUtcHour
+    ? new Date(Date.UTC(utcDate.getUTCFullYear(), utcDate.getUTCMonth(), utcDate.getUTCDate() - 1))
+    : utcDate;
+  return getSessionBoundaryForDate(prev, date);
+}

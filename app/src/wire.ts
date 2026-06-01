@@ -19,7 +19,7 @@ import { EurostatInflationCollector } from './collectors/eurostat-inflation.coll
 import { BojRatesCollector } from './collectors/boj-rates.collector.js';
 import { DefiLlamaStablecoinsCollector } from './collectors/defillama-stablecoins.collector.js';
 import { DefiLlamaChainsCollector } from './collectors/defillama-chains.collector.js';
-import { AnthropicLlmClient } from './llm-client.js';
+import { GeminiLlmClient } from './llm-client.js';
 import { PrismaSessionOverviewRepository } from './repository.js';
 import { TelegramPublisher } from './telegram-publisher.js';
 import { PrismaActiveSetupsLoader } from './setup-loader/active-setups-loader.js';
@@ -35,7 +35,7 @@ import {
   contextCollectorEntry,
 } from '../../service/src/context-merge.js';
 import type { AppConfig } from './config.js';
-import type { LoggerLike } from '../../service/src/ports.js';
+import type { EventCollector, LoggerLike } from '../../service/src/ports.js';
 import type { SessionOverviewDeps, ContextCollectorEntry } from '../../service/src/service-types.js';
 
 function toCoinSlug(symbol: string): string {
@@ -57,15 +57,11 @@ function buildCoinSlugList(symbols: { core: string[]; major: string[]; watch: st
 }
 
 export function wire(config: AppConfig, logger: LoggerLike): SessionOverviewService {
-  const bybitClient = new BybitHttpClient(
-    config.bybit.baseUrl,
-    config.bybit.apiKey,
-    config.bybit.apiSecret,
-  );
+  const bybitClient = new BybitHttpClient(config.bybit.baseUrl);
 
   const marketDataCollector = new BybitMarketDataCollector(bybitClient);
   const derivativesCollector = new BybitDerivativesCollector(bybitClient);
-  const eventCollectors = [
+  const eventCollectors: EventCollector[] = [
     new BybitAnnouncementsCollector(bybitClient),
     new FedCalendarCollector(),
     new BlsCalendarCollector(),
@@ -104,7 +100,7 @@ export function wire(config: AppConfig, logger: LoggerLike): SessionOverviewServ
     contextCollectors.push(contextCollectorEntry(new BeaGdpCollector(config.bea.apiKey), mergeMacroRatesContext));
   }
 
-  const llmClient = new AnthropicLlmClient(config.anthropic.apiKey, config.anthropic.model);
+  const llmClient = new GeminiLlmClient(config.gemini.apiKey, config.gemini.model);
   const repository = new PrismaSessionOverviewRepository(config.database.url);
   const setupLoader = new PrismaActiveSetupsLoader(config.database.url);
 

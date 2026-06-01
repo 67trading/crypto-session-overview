@@ -3,14 +3,93 @@ import type { SessionOverviewService } from '../../service/src/session-overview.
 import type { OverviewFilters, EventFilters, CollectorRunFilters, TelegramPostFilters } from '../../service/src/ports.js';
 import {
   isValidSession,
-  clampLimit,
+  validateLimitParam,
   parseDateParam,
   validateTriggerBody,
   VALID_SESSIONS_LIST,
 } from './router-validators.js';
 
-export function createSessionOverviewRouter(service: SessionOverviewService): Router {
+export type SessionOverviewRouterOptions = {
+  apiToken?: string;
+  rateLimit?: {
+    maxRequests: number;
+    windowMs: number;
+  };
+};
+
+type RateLimitBucket = { count: number; resetAt: number };
+const RATE_LIMIT_PRUNE_INTERVAL_MS = 5 * 60 * 1000;
+const DEFAULT_RATE_LIMIT = { maxRequests: 5, windowMs: 10 * 60 * 1000 };
+
+function positiveIntegerOrDefault(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(1, Math.floor(value));
+}
+
+function getBearerToken(req: Request): string | undefined {
+  const header = req.header('authorization');
+  if (header === undefined) return undefined;
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  return match?.[1];
+}
+
+export function createSessionOverviewRouter(
+  service: SessionOverviewService,
+  options: SessionOverviewRouterOptions = {},
+): Router {
   const router = Router();
+  const rateLimitBuckets = new Map<string, RateLimitBucket>();
+  let lastRateLimitPruneAt = 0;
+  const configuredRateLimit = options.rateLimit ?? DEFAULT_RATE_LIMIT;
+  const rateLimit = {
+    maxRequests: positiveIntegerOrDefault(configuredRateLimit.maxRequests, DEFAULT_RATE_LIMIT.maxRequests),
+    windowMs: positiveIntegerOrDefault(configuredRateLimit.windowMs, DEFAULT_RATE_LIMIT.windowMs),
+  };
+
+  const requireWriteAuth = (req: Request, res: Response): boolean => {
+    if (options.apiToken === undefined) return true;
+    const token = getBearerToken(req);
+    if (token === undefined) {
+      res.status(401).json({ error: 'Missing bearer token', code: 'UNAUTHORIZED' });
+      return false;
+    }
+    if (token !== options.apiToken) {
+      res.status(403).json({ error: 'Invalid bearer token', code: 'FORBIDDEN' });
+      return false;
+    }
+    return true;
+  };
+
+  const checkTriggerRateLimit = (req: Request, res: Response): boolean => {
+    if (options.apiToken === undefined) return true;
+
+    const key = getBearerToken(req) ?? req.ip ?? 'unknown';
+    const now = Date.now();
+    if (now - lastRateLimitPruneAt >= RATE_LIMIT_PRUNE_INTERVAL_MS) {
+      for (const [bucketKey, bucket] of rateLimitBuckets.entries()) {
+        if (bucket.resetAt <= now) {
+          rateLimitBuckets.delete(bucketKey);
+        }
+      }
+      lastRateLimitPruneAt = now;
+    }
+    const bucket = rateLimitBuckets.get(key);
+    if (bucket === undefined || bucket.resetAt <= now) {
+      let resetAt = bucket?.resetAt ?? now + rateLimit.windowMs;
+      if (resetAt <= now) {
+        const elapsedWindows = Math.floor((now - resetAt) / rateLimit.windowMs) + 1;
+        resetAt += elapsedWindows * rateLimit.windowMs;
+      }
+      rateLimitBuckets.set(key, { count: 1, resetAt });
+      return true;
+    }
+    if (bucket.count >= rateLimit.maxRequests) {
+      res.status(429).json({ error: 'Rate limit exceeded', code: 'RATE_LIMITED' });
+      return false;
+    }
+    bucket.count += 1;
+    return true;
+  };
 
   // GET /health
   router.get('/health', (_req: Request, res: Response): void => {
@@ -24,10 +103,16 @@ export function createSessionOverviewRouter(service: SessionOverviewService): Ro
       res.status(400).json({ error: 'Invalid session', code: 'INVALID_SESSION', validSessions: VALID_SESSIONS_LIST });
       return;
     }
+    const limitResult = validateLimitParam(limit);
+    if (!limitResult.ok) {
+      res.status(400).json({ error: limitResult.error, code: limitResult.code });
+      return;
+    }
+    const fromDateVal = parseDateParam(fromDate);
     const filters: OverviewFilters = {
       ...(isValidSession(session) ? { session } : {}),
-      ...(clampLimit(limit) !== undefined ? { limit: clampLimit(limit) } : {}),
-      ...(parseDateParam(fromDate) !== undefined ? { fromDate: parseDateParam(fromDate) } : {}),
+      ...(limitResult.value !== undefined ? { limit: limitResult.value } : {}),
+      ...(fromDateVal !== undefined ? { fromDate: fromDateVal } : {}),
     };
     try {
       const records = await service.listOverviews(filters);
@@ -58,7 +143,7 @@ export function createSessionOverviewRouter(service: SessionOverviewService): Ro
 
   // GET /overviews/:id — get by ID
   router.get('/overviews/:id', async (req: Request, res: Response): Promise<void> => {
-    const { id } = req.params;
+    const id = req.params['id']!;
     try {
       const record = await service.getOverviewById(id);
       if (record === null) {
@@ -78,6 +163,12 @@ export function createSessionOverviewRouter(service: SessionOverviewService): Ro
       res.status(400).json({ error: 'Invalid session', code: 'INVALID_SESSION', validSessions: VALID_SESSIONS_LIST });
       return;
     }
+    const limitResult = validateLimitParam(limit);
+    if (!limitResult.ok) {
+      res.status(400).json({ error: limitResult.error, code: limitResult.code });
+      return;
+    }
+    const fromDateVal = parseDateParam(fromDate);
     const filters: EventFilters = {
       ...(isValidSession(session) ? { session } : {}),
       ...(typeof eventType === 'string' ? { eventType } : {}),
@@ -85,8 +176,8 @@ export function createSessionOverviewRouter(service: SessionOverviewService): Ro
       ...(typeof source === 'string' ? { source } : {}),
       ...(typeof category === 'string' ? { category } : {}),
       ...(typeof importance === 'string' ? { importance } : {}),
-      ...(clampLimit(limit) !== undefined ? { limit: clampLimit(limit) } : {}),
-      ...(parseDateParam(fromDate) !== undefined ? { fromDate: parseDateParam(fromDate) } : {}),
+      ...(limitResult.value !== undefined ? { limit: limitResult.value } : {}),
+      ...(fromDateVal !== undefined ? { fromDate: fromDateVal } : {}),
     };
     try {
       const events = await service.listEvents(filters);
@@ -99,12 +190,18 @@ export function createSessionOverviewRouter(service: SessionOverviewService): Ro
   // GET /collector-runs — telemetry
   router.get('/collector-runs', async (req: Request, res: Response): Promise<void> => {
     const { collectorName, status, limit, fromDate } = req.query;
+    const limitResult = validateLimitParam(limit);
+    if (!limitResult.ok) {
+      res.status(400).json({ error: limitResult.error, code: limitResult.code });
+      return;
+    }
+    const fromDateVal = parseDateParam(fromDate);
     const filters: CollectorRunFilters = {
       ...(typeof collectorName === 'string' ? { collectorName } : {}),
-      ...(typeof status === 'string' && ['SUCCESS', 'FAILED', 'SKIPPED'].includes(status)
-        ? { status: status as CollectorRunFilters['status'] } : {}),
-      ...(clampLimit(limit) !== undefined ? { limit: clampLimit(limit) } : {}),
-      ...(parseDateParam(fromDate) !== undefined ? { fromDate: parseDateParam(fromDate) } : {}),
+      ...(typeof status === 'string' && ['SUCCESS', 'PARTIAL', 'FAILED', 'SKIPPED'].includes(status)
+        ? { status: status as NonNullable<CollectorRunFilters['status']> } : {}),
+      ...(limitResult.value !== undefined ? { limit: limitResult.value } : {}),
+      ...(fromDateVal !== undefined ? { fromDate: fromDateVal } : {}),
     };
     try {
       const runs = await service.listCollectorRuns(filters);
@@ -121,10 +218,15 @@ export function createSessionOverviewRouter(service: SessionOverviewService): Ro
       res.status(400).json({ error: 'Invalid session', code: 'INVALID_SESSION', validSessions: VALID_SESSIONS_LIST });
       return;
     }
+    const limitResult = validateLimitParam(limit);
+    if (!limitResult.ok) {
+      res.status(400).json({ error: limitResult.error, code: limitResult.code });
+      return;
+    }
     const filters: TelegramPostFilters = {
       ...(isValidSession(session) ? { session: session as string } : {}),
       ...(typeof overviewId === 'string' ? { overviewId } : {}),
-      ...(clampLimit(limit) !== undefined ? { limit: clampLimit(limit) } : {}),
+      ...(limitResult.value !== undefined ? { limit: limitResult.value } : {}),
     };
     try {
       const posts = await service.listTelegramPosts(filters);
@@ -136,9 +238,16 @@ export function createSessionOverviewRouter(service: SessionOverviewService): Ro
 
   // POST /overviews/trigger — manual trigger
   router.post('/overviews/trigger', async (req: Request, res: Response): Promise<void> => {
+    if (!requireWriteAuth(req, res)) return;
+    if (!checkTriggerRateLimit(req, res)) return;
+
     const validation = validateTriggerBody(req.body);
     if (!validation.ok) {
       res.status(400).json({ error: validation.error, code: validation.code });
+      return;
+    }
+    if (options.apiToken === undefined && validation.options.force === true) {
+      res.status(403).json({ error: 'force=true requires API authentication', code: 'FORCE_REQUIRES_AUTH' });
       return;
     }
     try {

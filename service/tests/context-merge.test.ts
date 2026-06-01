@@ -40,7 +40,7 @@ function makeBaseInput(): OverviewInput {
 }
 
 function makeResult<T>(status: CollectorResult<T>['status'], data?: T): CollectorResult<T> {
-  return { status, data, itemCount: data !== undefined ? 1 : 0 };
+  return { status, itemCount: data !== undefined ? 1 : 0, ...(data !== undefined ? { data } : {}) };
 }
 
 describe('mergeLiquidityContext()', () => {

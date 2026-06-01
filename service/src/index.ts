@@ -52,3 +52,4 @@ export { OverviewInputBuilder } from './overview-input-builder.js';
 export { OverviewFormatter } from './overview-formatter.js';
 export { OverviewRunner } from './overview-runner.js';
 export { SessionOverviewService } from './session-overview.service.js';
+export { metrics } from './metrics.js';

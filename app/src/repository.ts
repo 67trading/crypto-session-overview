@@ -96,6 +96,9 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         crossMarketJson: JSON.stringify((record as { crossMarket?: unknown }).crossMarket ?? null),
         etfFlowJson: JSON.stringify((record as { etfFlow?: unknown }).etfFlow ?? null),
         optionsJson: JSON.stringify((record as { options?: unknown }).options ?? null),
+        ...(record.sessionWindowStart !== undefined ? { sessionWindowStart: record.sessionWindowStart } : {}),
+        ...(record.sessionWindowEnd !== undefined ? { sessionWindowEnd: record.sessionWindowEnd } : {}),
+        ...(record.runKey !== undefined ? { runKey: record.runKey } : {}),
       },
     });
     return row.id;
@@ -124,20 +127,30 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         ...(filters.fromDate !== undefined ? { createdAt: { gte: filters.fromDate } } : {}),
       },
       orderBy: { createdAt: 'desc' },
-      take: filters.limit,
+      ...(filters.limit !== undefined ? { take: filters.limit } : {}),
     });
     return rows.map((row) => this.toOverviewRecord(row));
+  }
+
+  async getOverviewByRunKey(runKey: string): Promise<OverviewRecord | null> {
+    const row = await this.prisma.sessionOverview.findUnique({
+      where: { runKey },
+    });
+    if (row === null) return null;
+    return this.toOverviewRecord(row);
   }
 
   async saveTelegramPost(post: TelegramPostRecord): Promise<string> {
     const row = await this.prisma.telegramOverviewPost.create({
       data: {
         overviewId: post.overviewId,
-        messageId: post.messageId,
+        ...(post.messageId !== undefined ? { messageId: post.messageId } : {}),
         chatId: post.chatId,
         session: post.session,
         ...(post.messageIndex !== undefined ? { messageIndex: post.messageIndex } : {}),
         ...(post.text !== undefined ? { text: post.text } : {}),
+        ...(post.status !== undefined ? { status: post.status } : {}),
+        ...(post.errorMessage !== undefined ? { errorMessage: post.errorMessage } : {}),
       },
     });
     return row.id;
@@ -180,7 +193,7 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         ...(filters.session !== undefined ? { sessionRelevanceText: { contains: filters.session } } : {}),
       },
       orderBy: { collectedAt: 'desc' },
-      take: filters.limit,
+      ...(filters.limit !== undefined ? { take: filters.limit } : {}),
     });
 
     return rows.map((row) => JSON.parse(row.rawJson) as NormalizedEvent);
@@ -195,14 +208,19 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
       orderBy: { postedAt: 'desc' },
       take: filters.limit ?? 20,
     });
-    return rows.map((row) => ({
-      overviewId: row.overviewId,
-      messageId: row.messageId,
-      chatId: row.chatId,
-      session: row.session as CryptoSession,
-      ...(row.messageIndex !== null ? { messageIndex: row.messageIndex } : {}),
-      ...(row.text !== null ? { text: row.text } : {}),
-    }));
+    return rows.map((row) => {
+      const record: TelegramPostRecord = {
+        overviewId: row.overviewId,
+        chatId: row.chatId,
+        session: row.session as CryptoSession,
+      };
+      if (row.messageId !== null) record.messageId = row.messageId;
+      if (row.messageIndex !== null) record.messageIndex = row.messageIndex;
+      if (row.text !== null) record.text = row.text;
+      if (row.status === 'SENT' || row.status === 'FAILED') record.status = row.status;
+      if (row.errorMessage !== null) record.errorMessage = row.errorMessage;
+      return record;
+    });
   }
 
   async listCollectorRuns(filters: CollectorRunFilters): Promise<CollectorRunRecord[]> {
@@ -213,7 +231,7 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         ...(filters.fromDate !== undefined ? { startedAt: { gte: filters.fromDate } } : {}),
       },
       orderBy: { startedAt: 'desc' },
-      take: filters.limit,
+      ...(filters.limit !== undefined ? { take: filters.limit } : {}),
     });
 
     return rows.map((row) => ({
@@ -241,20 +259,35 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
     telegramPostIds: string;
     promptVersion: string | null;
     model: string | null;
+    sourceHealthJson?: string | null;
+    dataStatusJson?: string | null;
+    sessionWindowStart?: Date | null;
+    sessionWindowEnd?: Date | null;
+    runKey?: string | null;
     createdAt: Date;
   }): OverviewRecord {
     const telegramPostIds = JSON.parse(row.telegramPostIds) as string[];
-    return {
+    const record: OverviewRecord = {
       id: row.id,
       session: row.session as CryptoSession,
       status: row.status as OverviewRecord['status'],
       outputJson: JSON.parse(row.outputJson) as OverviewRecord['outputJson'],
-      ...(row.humanReport !== null ? { humanReport: row.humanReport } : {}),
-      ...(row.inputSnapshotId !== null ? { inputSnapshotId: row.inputSnapshotId } : {}),
-      ...(telegramPostIds.length > 0 ? { telegramPostIds } : {}),
-      ...(row.promptVersion !== null ? { promptVersion: row.promptVersion } : {}),
-      ...(row.model !== null ? { model: row.model } : {}),
       createdAt: row.createdAt,
     };
+    if (row.humanReport !== null) record.humanReport = row.humanReport;
+    if (row.inputSnapshotId !== null) record.inputSnapshotId = row.inputSnapshotId;
+    if (telegramPostIds.length > 0) record.telegramPostIds = telegramPostIds;
+    if (row.promptVersion !== null) record.promptVersion = row.promptVersion;
+    if (row.model !== null) record.model = row.model;
+    if (row.sessionWindowStart !== null && row.sessionWindowStart !== undefined) record.sessionWindowStart = row.sessionWindowStart;
+    if (row.sessionWindowEnd !== null && row.sessionWindowEnd !== undefined) record.sessionWindowEnd = row.sessionWindowEnd;
+    if (row.runKey !== null && row.runKey !== undefined) record.runKey = row.runKey;
+    if (row.sourceHealthJson !== null && row.sourceHealthJson !== undefined) {
+      record.sourceHealth = JSON.parse(row.sourceHealthJson) as NonNullable<OverviewRecord['sourceHealth']>;
+    }
+    if (row.dataStatusJson !== null && row.dataStatusJson !== undefined) {
+      record.dataStatus = JSON.parse(row.dataStatusJson) as NonNullable<OverviewRecord['dataStatus']>;
+    }
+    return record;
   }
 }

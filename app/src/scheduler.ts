@@ -10,14 +10,22 @@ type ScheduleEntry = {
 };
 
 const LOCK_TTL_MS = 30 * 60 * 1000; // 30 minutes — covers a slow run
+type LockAcquireResult = { acquired: true } | { acquired: false; reason: 'held' | 'error'; error?: unknown };
 
-const inMemoryLocks = new Set<string>();
+const inMemoryLocks = new Map<string, number>();
 
-async function acquireLock(prisma: PrismaClient, lockId: string): Promise<boolean> {
-  if (inMemoryLocks.has(lockId)) return false;
+export function clearSchedulerInMemoryLocks(): void {
+  inMemoryLocks.clear();
+}
 
+async function acquireLock(prisma: PrismaClient, lockId: string): Promise<LockAcquireResult> {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + LOCK_TTL_MS);
+  const localExpiresAt = inMemoryLocks.get(lockId);
+  if (localExpiresAt !== undefined) {
+    if (localExpiresAt > now.getTime()) return { acquired: false, reason: 'held' };
+    inMemoryLocks.delete(lockId);
+  }
 
   try {
     // Expire stale locks first
@@ -29,17 +37,20 @@ async function acquireLock(prisma: PrismaClient, lockId: string): Promise<boolea
       data: { id: lockId, lockedAt: now, expiresAt },
     });
 
-    inMemoryLocks.add(lockId);
-    return true;
-  } catch {
-    // Unique constraint violation — lock already held
-    return false;
+    inMemoryLocks.set(lockId, expiresAt.getTime());
+    return { acquired: true };
+  } catch (err) {
+    const maybe = err as { code?: unknown };
+    if (maybe.code === 'P2002') {
+      return { acquired: false, reason: 'held' };
+    }
+    return { acquired: false, reason: 'error', error: err };
   }
 }
 
 async function releaseLock(prisma: PrismaClient, lockId: string): Promise<void> {
-  inMemoryLocks.delete(lockId);
   await prisma.schedulerLock.deleteMany({ where: { id: lockId } });
+  inMemoryLocks.delete(lockId);
 }
 
 export function startScheduler(
@@ -58,9 +69,13 @@ export function startScheduler(
   for (const { session, cronExpr } of schedules) {
     cron.schedule(cronExpr, async () => {
       const lockId = `scheduler-${session}`;
-      const acquired = await acquireLock(prisma, lockId);
-      if (!acquired) {
-        logger.warn({ session }, 'Scheduler lock already held — skipping run');
+      const lock = await acquireLock(prisma, lockId);
+      if (!lock.acquired) {
+        if (lock.reason === 'error') {
+          logger.error({ session, err: lock.error }, 'Scheduler lock acquisition failed — skipping run');
+        } else {
+          logger.warn({ session }, 'Scheduler lock already held — skipping run');
+        }
         return;
       }
 
@@ -75,7 +90,9 @@ export function startScheduler(
       } catch (err) {
         logger.error({ session, err }, 'Scheduled overview run failed');
       } finally {
-        await releaseLock(prisma, lockId);
+        await releaseLock(prisma, lockId).catch((err) => {
+          logger.error({ session, err }, 'Scheduler lock release failed');
+        });
       }
     }, { timezone: config.scheduler.timezone });
 

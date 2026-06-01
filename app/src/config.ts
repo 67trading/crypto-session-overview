@@ -1,13 +1,11 @@
 export type AppConfig = {
   bybit: {
     baseUrl: string;
-    apiKey: string;
-    apiSecret: string;
   };
   fred?: { apiKey: string };
   bea?: { apiKey: string };
   mobula?: { apiKey: string };
-  anthropic: {
+  gemini: {
     apiKey: string;
     model: string;
   };
@@ -26,6 +24,7 @@ export type AppConfig = {
   };
   server: {
     port: number;
+    apiToken?: string;
   };
   scheduler: {
     enabled: boolean;
@@ -57,11 +56,7 @@ function parseSymbols(raw: string): string[] {
 }
 
 export function loadConfig(): AppConfig {
-  const anthropicApiKey = requireEnv('ANTHROPIC_API_KEY');
-
-  // Bybit credentials (apiKey and apiSecret optional for public endpoints but kept for future auth)
-  const bybitApiKey = optionalEnv('BYBIT_API_KEY', '');
-  const bybitApiSecret = optionalEnv('BYBIT_API_SECRET', '');
+  const geminiApiKey = requireEnv('GEMINI_API_KEY');
 
   const telegramEnabled = optionalEnv('TELEGRAM_ENABLED', 'false') === 'true';
   const telegramBotToken = telegramEnabled ? requireEnv('TELEGRAM_BOT_TOKEN') : optionalEnv('TELEGRAM_BOT_TOKEN', '');
@@ -80,6 +75,11 @@ export function loadConfig(): AppConfig {
   const fredApiKey = optionalEnv('FRED_API_KEY', '');
   const beaApiKey = optionalEnv('BEA_API_KEY', '');
   const mobulaApiKey = optionalEnv('MOBULA_API_KEY', '');
+  const apiTokenRaw = process.env['SESSION_OVERVIEW_API_TOKEN'];
+  const apiToken = apiTokenRaw?.trim();
+  if (apiTokenRaw !== undefined && apiToken === '') {
+    throw new Error('SESSION_OVERVIEW_API_TOKEN must be non-empty when set');
+  }
 
   return {
     ...(fredApiKey !== '' ? { fred: { apiKey: fredApiKey } } : {}),
@@ -87,12 +87,10 @@ export function loadConfig(): AppConfig {
     ...(mobulaApiKey !== '' ? { mobula: { apiKey: mobulaApiKey } } : {}),
     bybit: {
       baseUrl: optionalEnv('BYBIT_BASE_URL', 'https://api.bybit.com'),
-      apiKey: bybitApiKey,
-      apiSecret: bybitApiSecret,
     },
-    anthropic: {
-      apiKey: anthropicApiKey,
-      model: optionalEnv('ANTHROPIC_MODEL', 'claude-opus-4-7'),
+    gemini: {
+      apiKey: geminiApiKey,
+      model: optionalEnv('GEMINI_MODEL', 'gemini-2.5-pro'),
     },
     telegram: {
       botToken: telegramBotToken,
@@ -105,14 +103,17 @@ export function loadConfig(): AppConfig {
       watch: watchSymbolsRaw !== '' ? parseSymbols(watchSymbolsRaw) : [],
     },
     database: {
-      url: optionalEnv('DATABASE_URL', 'file:./session-overview.db'),
+      url: optionalEnv('DATABASE_URL', 'postgresql://crypto:crypto@localhost:5432/crypto_session_overview?schema=public'),
     },
     server: {
       port,
+      ...(apiToken !== undefined
+        ? { apiToken }
+        : {}),
     },
     scheduler: {
       enabled: optionalEnv('SCHEDULER_ENABLED', 'true') === 'true',
-      timezone: optionalEnv('SCHEDULER_TIMEZONE', 'Europe/Sofia'),
+      timezone: optionalEnv('SCHEDULER_TIMEZONE', 'Europe/Berlin'),
       cronAsia: optionalEnv('SCHEDULER_CRON_ASIA', '30 1 * * *'),
       cronEurope: optionalEnv('SCHEDULER_CRON_EUROPE', '30 8 * * *'),
       cronUs: optionalEnv('SCHEDULER_CRON_US', '0 15 * * *'),

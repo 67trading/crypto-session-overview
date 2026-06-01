@@ -36,7 +36,7 @@ function makeValidOutput(session = 'US_CRYPTO'): OverviewOutput {
     briefId: 'brief-test-1',
     generatedAtUtc: new Date().toISOString(),
     session: session as OverviewOutput['session'],
-    marketRegime: 'constructive',
+    marketRegime: 'constructive_but_extended',
     briefConfidence: 'medium',
     dataStatus: { price: 'fresh', events: 'fresh', derivatives: 'fresh', liquidations: 'unavailable' },
     whatChanged: ['BTC structure turned bullish.'],
@@ -60,6 +60,7 @@ function makeRepo() {
     saveOverview: vi.fn().mockResolvedValue('overview-id-1'),
     updateOverviewTelegramPosts: vi.fn().mockResolvedValue(undefined),
     getLatestOverview: vi.fn().mockResolvedValue(null),
+    getOverviewByRunKey: vi.fn().mockResolvedValue(null),
     listOverviews: vi.fn().mockResolvedValue([]),
     saveTelegramPost: vi.fn().mockResolvedValue(undefined),
     saveLlmUsage: vi.fn().mockResolvedValue(undefined),
@@ -71,7 +72,7 @@ function makeRepo() {
 }
 
 function makeLogger() {
-  return { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 }
 
 function makeDeps(overrides: Partial<SessionOverviewDeps> = {}): SessionOverviewDeps {
@@ -118,6 +119,140 @@ describe('OverviewRunner.run()', () => {
     expect(result.overviewId).toBe('overview-id-1');
     expect(result.session).toBe('US_CRYPTO');
     expect(result.telegramPublished).toBe(false);
+  });
+
+  it('returns an existing overview for the same session window unless force=true', async () => {
+    const existing = {
+      id: 'existing-overview',
+      session: 'US_CRYPTO' as const,
+      status: 'SUCCESS' as const,
+      outputJson: makeValidOutput(),
+      telegramPostIds: ['msg-1'],
+    };
+    const repo = makeRepo();
+    repo.getOverviewByRunKey.mockResolvedValue(existing);
+    const marketDataCollector = { collect: vi.fn().mockResolvedValue([makeSnapshot('BTCUSDT', 97000)]) };
+    const deps = makeDeps({ repository: repo, marketDataCollector });
+    const runner = new OverviewRunner(deps);
+
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.overviewId).toBe('existing-overview');
+    expect(result.telegramPublished).toBe(true);
+    expect(marketDataCollector.collect).not.toHaveBeenCalled();
+  });
+
+  it('retries once with a deterministic retry key when the base overview is FAILED', async () => {
+    const existing = {
+      id: 'failed-overview',
+      session: 'US_CRYPTO' as const,
+      status: 'FAILED' as const,
+      outputJson: makeValidOutput(),
+    };
+    const repo = makeRepo();
+    repo.getOverviewByRunKey
+      .mockResolvedValueOnce(existing)
+      .mockResolvedValueOnce(null);
+    const marketDataCollector = {
+      collect: vi.fn().mockResolvedValue([
+        makeSnapshot('BTCUSDT', 97000),
+        makeSnapshot('ETHUSDT', 3200),
+      ]),
+    };
+    const deps = makeDeps({ repository: repo, marketDataCollector });
+    const runner = new OverviewRunner(deps);
+
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.status).toBe('SUCCESS');
+    expect(result.overviewId).toBe('overview-id-1');
+    expect(marketDataCollector.collect).toHaveBeenCalled();
+    expect(repo.saveOverview).toHaveBeenCalledWith(expect.objectContaining({
+      runKey: expect.stringMatching(/:retry$/),
+    }));
+  });
+
+  it('returns an existing retry overview after a base FAILED overview', async () => {
+    const failedBase = {
+      id: 'failed-overview',
+      session: 'US_CRYPTO' as const,
+      status: 'FAILED' as const,
+      outputJson: makeValidOutput(),
+    };
+    const retryOverview = {
+      id: 'retry-overview',
+      session: 'US_CRYPTO' as const,
+      status: 'SUCCESS' as const,
+      outputJson: makeValidOutput(),
+    };
+    const repo = makeRepo();
+    repo.getOverviewByRunKey
+      .mockResolvedValueOnce(failedBase)
+      .mockResolvedValueOnce(retryOverview);
+    const marketDataCollector = {
+      collect: vi.fn().mockResolvedValue([makeSnapshot('BTCUSDT', 97000)]),
+    };
+    const deps = makeDeps({ repository: repo, marketDataCollector });
+    const runner = new OverviewRunner(deps);
+
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.overviewId).toBe('retry-overview');
+    expect(result.status).toBe('SUCCESS');
+    expect(marketDataCollector.collect).not.toHaveBeenCalled();
+  });
+
+  it('retries once with a deterministic retry key when the base overview is PARTIAL', async () => {
+    const existing = {
+      id: 'partial-overview',
+      session: 'US_CRYPTO' as const,
+      status: 'PARTIAL' as const,
+      outputJson: makeValidOutput(),
+    };
+    const repo = makeRepo();
+    repo.getOverviewByRunKey
+      .mockResolvedValueOnce(existing)
+      .mockResolvedValueOnce(null);
+    const marketDataCollector = {
+      collect: vi.fn().mockResolvedValue([
+        makeSnapshot('BTCUSDT', 97000),
+        makeSnapshot('ETHUSDT', 3200),
+      ]),
+    };
+    const deps = makeDeps({ repository: repo, marketDataCollector });
+    const runner = new OverviewRunner(deps);
+
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.status).toBe('SUCCESS');
+    expect(marketDataCollector.collect).toHaveBeenCalled();
+    expect(repo.saveOverview).toHaveBeenCalledWith(expect.objectContaining({
+      runKey: expect.stringMatching(/:retry$/),
+    }));
+  });
+
+  it('returns the concurrently saved overview when saveOverview hits a runKey unique conflict', async () => {
+    const concurrentOverview = {
+      id: 'concurrent-overview',
+      session: 'US_CRYPTO' as const,
+      status: 'SUCCESS' as const,
+      outputJson: makeValidOutput(),
+    };
+    const uniqueError = Object.assign(new Error('Unique constraint failed on the fields: (`runKey`)'), {
+      code: 'P2002',
+      meta: { target: ['runKey'] },
+    });
+    const repo = makeRepo();
+    repo.getOverviewByRunKey
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(concurrentOverview);
+    repo.saveOverview.mockRejectedValue(uniqueError);
+    const runner = new OverviewRunner(makeDeps({ repository: repo }));
+
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.overviewId).toBe('concurrent-overview');
+    expect(result.status).toBe('SUCCESS');
   });
 
   it('saves input snapshot, collector runs, and overview to repository', async () => {
@@ -175,7 +310,7 @@ describe('OverviewRunner.run()', () => {
     const result = await runner.run(RUN_OPTIONS);
 
     expect(result.status).toBe('SUCCESS');
-    expect((deps.logger as ReturnType<typeof makeLogger>).warn).toHaveBeenCalled();
+    expect((deps.logger as unknown as ReturnType<typeof makeLogger>).warn).toHaveBeenCalled();
   });
 
   it('continues and returns SUCCESS when a context collector throws', async () => {
@@ -193,11 +328,13 @@ describe('OverviewRunner.run()', () => {
     const result = await runner.run(RUN_OPTIONS);
 
     expect(result.status).toBe('SUCCESS');
-    expect((deps.logger as ReturnType<typeof makeLogger>).warn).toHaveBeenCalled();
+    expect((deps.logger as unknown as ReturnType<typeof makeLogger>).warn).toHaveBeenCalled();
   });
 
   it('returns FAILED when market data collector throws', async () => {
+    const repo = makeRepo();
     const deps = makeDeps({
+      repository: repo,
       marketDataCollector: {
         collect: vi.fn().mockRejectedValue(new Error('Bybit unreachable')),
       },
@@ -208,6 +345,46 @@ describe('OverviewRunner.run()', () => {
     expect(result.status).toBe('FAILED');
     expect(result.error).toContain('Bybit unreachable');
     expect(result.telegramPublished).toBe(false);
+    expect(repo.saveCollectorRun).toHaveBeenCalledWith(expect.objectContaining({
+      collectorName: 'market-data',
+      status: 'FAILED',
+    }));
+  });
+
+  it('returns PARTIAL and records derivatives failure when derivatives collector throws', async () => {
+    const repo = makeRepo();
+    const deps = makeDeps({
+      repository: repo,
+      derivativesCollector: {
+        collect: vi.fn().mockRejectedValue(new Error('Derivatives unavailable')),
+      },
+    });
+    const runner = new OverviewRunner(deps);
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.status).toBe('PARTIAL');
+    expect(result.collectorStatus?.['market-data']).toBe('success');
+    expect(result.collectorStatus?.['derivatives']).toBe('failed');
+    expect(repo.saveCollectorRun).toHaveBeenCalledWith(expect.objectContaining({
+      collectorName: 'derivatives',
+      status: 'FAILED',
+    }));
+  });
+
+  it('does not publish Telegram when derivatives failure makes the run PARTIAL', async () => {
+    const publisher = { publish: vi.fn().mockResolvedValue(['msg-1']) };
+    const deps = makeDeps({
+      publisher,
+      derivativesCollector: {
+        collect: vi.fn().mockRejectedValue(new Error('Derivatives unavailable')),
+      },
+    });
+    const runner = new OverviewRunner(deps);
+    const result = await runner.run({ ...RUN_OPTIONS, publish: true });
+
+    expect(result.status).toBe('PARTIAL');
+    expect(result.telegramPublished).toBe(false);
+    expect(publisher.publish).not.toHaveBeenCalled();
   });
 
   it('returns FAILED when LLM client throws', async () => {
@@ -226,6 +403,7 @@ describe('OverviewRunner.run()', () => {
 
   it('publishes to Telegram and saves post records when publish=true', async () => {
     const publisher = {
+      chatId: 'chat-real',
       publish: vi.fn().mockResolvedValue(['msg-101', 'msg-102']),
     };
     const repo = makeRepo();
@@ -237,7 +415,56 @@ describe('OverviewRunner.run()', () => {
     expect(result.telegramPublished).toBe(true);
     expect(publisher.publish).toHaveBeenCalled();
     expect(repo.saveTelegramPost).toHaveBeenCalled();
+    expect(repo.saveTelegramPost).toHaveBeenCalledWith(expect.objectContaining({ status: 'SENT', chatId: 'chat-real' }));
     expect(repo.updateOverviewTelegramPosts).toHaveBeenCalled();
+  });
+
+  it('saves a failed Telegram post when publishing throws', async () => {
+    const publisher = {
+      publish: vi.fn().mockRejectedValue(new Error('Telegram unavailable')),
+    };
+    const repo = makeRepo();
+    const deps = makeDeps({ repository: repo, publisher });
+    const runner = new OverviewRunner(deps);
+    const result = await runner.run({ ...RUN_OPTIONS, publish: true });
+
+    expect(result.status).toBe('SUCCESS');
+    expect(result.telegramPublished).toBe(false);
+    expect(repo.saveOverview).toHaveBeenCalled();
+    expect(repo.saveTelegramPost).toHaveBeenCalledWith(expect.objectContaining({
+      overviewId: 'overview-id-1',
+      status: 'FAILED',
+      errorMessage: 'Telegram unavailable',
+    }));
+  });
+
+  it('persists successful Telegram IDs when a later chunk fails', async () => {
+    const longOutput = makeValidOutput();
+    longOutput.note = 'n'.repeat(5000);
+    const publisher = {
+      publish: vi.fn()
+        .mockResolvedValueOnce(['msg-1'])
+        .mockRejectedValueOnce(new Error('Telegram chunk 2 failed')),
+    };
+    const repo = makeRepo();
+    const deps = makeDeps({
+      repository: repo,
+      publisher,
+      llmClient: {
+        modelName: 'test-model',
+        generateOverview: vi.fn().mockResolvedValue({ output: longOutput }),
+      },
+    });
+    const runner = new OverviewRunner(deps);
+    const result = await runner.run({ ...RUN_OPTIONS, publish: true });
+
+    expect(result.telegramPublished).toBe(true);
+    expect(result.telegramPostIds).toEqual(['msg-1']);
+    expect(repo.updateOverviewTelegramPosts).toHaveBeenCalledWith('overview-id-1', ['msg-1']);
+    expect(repo.saveTelegramPost).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'FAILED',
+      errorMessage: 'Telegram chunk 2 failed',
+    }));
   });
 
   it('logs invariant violations as warnings without failing the run', async () => {
@@ -297,7 +524,7 @@ describe('OverviewRunner.run()', () => {
 
   it('context collectors deep-merge multiple MacroRatesContext contributors', async () => {
     // Wire up two context collectors each contributing different MacroRatesContext fields
-    const { mergeMacroRatesContext } = await import('../src/context-merge.js');
+    const { mergeMacroRatesContext, contextCollectorEntry } = await import('../src/context-merge.js');
 
     const fredCollector = {
       sourceName: 'fred-rates',
@@ -319,8 +546,8 @@ describe('OverviewRunner.run()', () => {
     let capturedInput: unknown;
     const deps = makeDeps({
       contextCollectors: [
-        { collector: fredCollector, merge: mergeMacroRatesContext },
-        { collector: ecbCollector, merge: mergeMacroRatesContext },
+        contextCollectorEntry(fredCollector, mergeMacroRatesContext),
+        contextCollectorEntry(ecbCollector, mergeMacroRatesContext),
       ],
       llmClient: {
         modelName: 'test-model',

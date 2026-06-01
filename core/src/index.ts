@@ -1,5 +1,5 @@
 export type { CryptoSession, SessionWindow, SessionBoundary } from './session/session.types.js';
-export { SESSION_WINDOWS, resolveActiveSession, getSessionBoundaryForDate, getPreviousSession } from './session/session-windows.js';
+export { SESSION_WINDOWS, resolveActiveSession, getSessionBoundaryForDate, getPreviousSession, getPreviousSessionBoundaryForDate } from './session/session-windows.js';
 export type { HtfCandle, WeeklyLevels, DailyLevels, FourHourLevels, FourHourStructure, HtfLevels } from './levels/htf-levels.js';
 export { computeMidpoint, computeDistanceTo, computeWeeklyLevels, computeDailyLevels, computeFourHourLevels, computeHtfLevels } from './levels/htf-levels.js';
 export type { SessionHighLow, SessionContinuationRead, SessionContext } from './context/session-context.js';

@@ -1,8 +1,11 @@
+import { config as loadDotenv } from 'dotenv';
 import { loadConfig } from './config.js';
 import { createServer } from './server.js';
 import { startScheduler } from './scheduler.js';
 import { wire } from './wire.js';
 import type { LoggerLike } from '../../service/src/ports.js';
+
+loadDotenv({ path: new URL('../../.env', import.meta.url) });
 
 const config = loadConfig();
 

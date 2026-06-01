@@ -81,10 +81,11 @@ async function simulateTelegramPostsHandler(
     };
   }
 
+  const limitVal = clampLimit(limit);
   const filters: TelegramPostFilters = {
     ...(isValidSession(session) ? { session: session as string } : {}),
     ...(typeof overviewId === 'string' ? { overviewId } : {}),
-    ...(clampLimit(limit) !== undefined ? { limit: clampLimit(limit) } : {}),
+    ...(limitVal !== undefined ? { limit: limitVal } : {}),
   };
 
   try {
@@ -99,10 +100,10 @@ async function simulateTelegramPostsHandler(
 }
 
 describe('GET /telegram-posts — handler logic', () => {
-  let listTelegramPosts: ReturnType<typeof vi.fn>;
+  let listTelegramPosts: (f: TelegramPostFilters) => Promise<TelegramPostRecord[]>;
 
   beforeEach(() => {
-    listTelegramPosts = vi.fn().mockResolvedValue([]);
+    listTelegramPosts = vi.fn().mockResolvedValue([]) as unknown as typeof listTelegramPosts;
   });
 
   it('calls listTelegramPosts with empty filters when no query params and returns {items:[], count:0}', async () => {
@@ -147,7 +148,7 @@ describe('GET /telegram-posts — handler logic', () => {
         text: 'brief text',
       },
     ];
-    listTelegramPosts = vi.fn().mockResolvedValue(posts);
+    listTelegramPosts = vi.fn().mockResolvedValue(posts) as unknown as typeof listTelegramPosts;
 
     const res = await simulateTelegramPostsHandler({}, listTelegramPosts);
 
@@ -158,7 +159,7 @@ describe('GET /telegram-posts — handler logic', () => {
   });
 
   it('returns 500 when service throws', async () => {
-    listTelegramPosts = vi.fn().mockRejectedValue(new Error('db exploded'));
+    listTelegramPosts = vi.fn().mockRejectedValue(new Error('db exploded')) as unknown as typeof listTelegramPosts;
 
     const res = await simulateTelegramPostsHandler({}, listTelegramPosts);
 

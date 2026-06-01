@@ -1,17 +1,42 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { createSessionOverviewRouter } from '../../api/src/router.js';
+import { metrics } from '../../service/src/metrics.js';
 import type { SessionOverviewService } from '../../service/src/session-overview.service.js';
 import type { AppConfig } from './config.js';
 
+function routeMetricLabel(req: Request): string {
+  if (req.route === undefined) {
+    return `${req.method}:unmatched`;
+  }
+
+  const routePath = typeof req.route.path === 'string' ? req.route.path : 'unknown';
+  const baseUrl = req.baseUrl === '' ? '' : req.baseUrl;
+  return `${baseUrl}${routePath}`
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, ':id')
+    .replace(/\/\d+(?=\/|$)/g, '/:id');
+}
+
 export function createServer(
   service: SessionOverviewService,
-  _config: AppConfig,
+  config: AppConfig,
 ): express.Application {
   const app = express();
 
   app.use(express.json());
+  app.use((req: Request, res: Response, next: NextFunction): void => {
+    res.on('finish', () => {
+      metrics.recordApiRequest(routeMetricLabel(req), res.statusCode);
+    });
+    next();
+  });
 
-  const overviewRouter = createSessionOverviewRouter(service);
+  app.get('/metrics', (_req: Request, res: Response): void => {
+    res.status(200).json(metrics.snapshot());
+  });
+
+  const overviewRouter = createSessionOverviewRouter(service, {
+    ...(config.server.apiToken !== undefined ? { apiToken: config.server.apiToken } : {}),
+  });
   app.use('/api/v1/session-overview', overviewRouter);
 
   // 404 handler

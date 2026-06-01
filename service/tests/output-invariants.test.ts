@@ -25,10 +25,12 @@ function makeOutput(overrides: Partial<OverviewOutput> = {}): OverviewOutput {
 }
 
 describe('FORBIDDEN_PHRASES', () => {
-  it('includes all 8 prohibited phrases', () => {
-    expect(FORBIDDEN_PHRASES).toHaveLength(8);
+  it('includes expanded prohibited execution phrases', () => {
+    expect(FORBIDDEN_PHRASES.length).toBeGreaterThan(8);
     expect(FORBIDDEN_PHRASES).toContain('buy here');
     expect(FORBIDDEN_PHRASES).toContain('go long');
+    expect(FORBIDDEN_PHRASES).toContain('open long');
+    expect(FORBIDDEN_PHRASES).toContain('position size');
     expect(FORBIDDEN_PHRASES).toContain('place a trade');
   });
 });
@@ -88,6 +90,41 @@ describe('scanForForbiddenPhrases()', () => {
         funding: 'positive elevated across BTC/ETH',
         oi: 'rising on BTC',
         positioning: 'long-heavy on BTC, balanced on ETH',
+      },
+    });
+    expect(scanForForbiddenPhrases(output)).toHaveLength(0);
+  });
+
+  it('allows market-structure language using open above or open below', () => {
+    const output = makeOutput({
+      scenarios: {
+        reclaim: 'If BTC can open above the weekly high, continuation pressure can improve.',
+        rejection: 'A daily open below support would keep structure defensive.',
+        chop: 'Range persists.',
+      },
+    });
+    expect(scanForForbiddenPhrases(output)).toHaveLength(0);
+  });
+
+  it.each([
+    ['open long above 75K', 'open long'],
+    ['enter at 75K on reclaim', 'enter at'],
+    ['position size should be reduced', 'position size'],
+    ['use leverage only after confirmation', 'use leverage'],
+    ['risk 1% on the setup', 'risk X%'],
+  ])('detects execution instruction "%s"', (text, expected) => {
+    const output = makeOutput({ note: text });
+    const violations = scanForForbiddenPhrases(output);
+    expect(violations.some((v) => v.includes(expected))).toBe(true);
+  });
+
+  it('allows long/short ratio as market context', () => {
+    const output = makeOutput({
+      derivatives: {
+        summary: 'Long/short ratio remains elevated while short-heavy positioning cools.',
+        funding: 'neutral',
+        oi: 'stable',
+        positioning: 'long/short ratio elevated, short-heavy but improving',
       },
     });
     expect(scanForForbiddenPhrases(output)).toHaveLength(0);

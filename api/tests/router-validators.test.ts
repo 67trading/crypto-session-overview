@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   isValidSession,
   clampLimit,
+  validateLimitParam,
   parseDateParam,
   validateTriggerBody,
 } from '../src/router-validators.js';
@@ -49,6 +50,28 @@ describe('clampLimit()', () => {
   it('returns undefined for non-string inputs', () => {
     expect(clampLimit(undefined)).toBeUndefined();
     expect(clampLimit(50)).toBeUndefined();
+  });
+});
+
+describe('validateLimitParam()', () => {
+  it('accepts a valid numeric string', () => {
+    expect(validateLimitParam('10')).toEqual({ ok: true, value: 10 });
+  });
+
+  it('accepts undefined as omitted', () => {
+    expect(validateLimitParam(undefined)).toEqual({ ok: true });
+  });
+
+  it('rejects values above 100', () => {
+    expect(validateLimitParam('101')).toEqual(expect.objectContaining({ ok: false, code: 'INVALID_LIMIT' }));
+  });
+
+  it('rejects values below 1', () => {
+    expect(validateLimitParam('0')).toEqual(expect.objectContaining({ ok: false, code: 'INVALID_LIMIT' }));
+  });
+
+  it('rejects non-numeric strings', () => {
+    expect(validateLimitParam('abc')).toEqual(expect.objectContaining({ ok: false, code: 'INVALID_LIMIT' }));
   });
 });
 
@@ -111,7 +134,18 @@ describe('validateTriggerBody()', () => {
     expect(result.code).toBe('INVALID_SYMBOLS');
   });
 
-  it('rejects symbols as array', () => {
+  it('accepts symbols shorthand array', () => {
+    const result = validateTriggerBody({ session: 'US_CRYPTO', symbols: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'] });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.options.symbols).toEqual({
+      core: ['BTCUSDT', 'ETHUSDT'],
+      major: ['SOLUSDT'],
+      watch: [],
+    });
+  });
+
+  it('rejects empty symbols shorthand array', () => {
     const result = validateTriggerBody({ session: 'US_CRYPTO', symbols: [] });
     expect(result.ok).toBe(false);
     if (result.ok) return;

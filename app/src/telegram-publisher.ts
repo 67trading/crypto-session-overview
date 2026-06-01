@@ -9,7 +9,7 @@ type TelegramResponse = {
 export class TelegramPublisher implements OverviewPublisher {
   constructor(
     private readonly botToken: string,
-    private readonly chatId: string,
+    readonly chatId: string,
   ) {}
 
   async publish(report: string, _session: CryptoSession): Promise<string[]> {

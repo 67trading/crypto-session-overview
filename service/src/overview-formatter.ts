@@ -6,7 +6,7 @@ const SESSION_LABEL: Record<CryptoSession, string> = {
   US_CRYPTO: 'US',
 };
 
-const SOFIA_TZ = 'Europe/Sofia';
+const FRANKFURT_TZ = 'Europe/Berlin';
 
 const IMPORTANCE_SYMBOL: Record<string, string> = {
   critical: '🔴',
@@ -28,10 +28,10 @@ function toUtcDatetime(utcIso: string): string {
   }).format(date).replace(',', '');
 }
 
-function toSofiaHHmm(utcIso: string): string {
+function toFrankfurtHHmm(utcIso: string): string {
   const date = new Date(utcIso);
   return new Intl.DateTimeFormat('en-GB', {
-    timeZone: SOFIA_TZ,
+    timeZone: FRANKFURT_TZ,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -47,7 +47,7 @@ export class OverviewFormatter {
 
     // Header
     lines.push(`Crypto ${label} Brief`);
-    lines.push(`Generated: ${toUtcDatetime(output.generatedAtUtc)} UTC / ${toSofiaHHmm(output.generatedAtUtc)} Sofia`);
+    lines.push(`Generated: ${toUtcDatetime(output.generatedAtUtc)} UTC / ${toFrankfurtHHmm(output.generatedAtUtc)} Frankfurt`);
     lines.push('');
 
     // Regime + confidence
@@ -150,16 +150,35 @@ export class OverviewFormatter {
     const lines = report.split('\n');
     let current = '';
 
-    for (const line of lines) {
+    const pushCurrent = (): void => {
+      if (current.length > 0) {
+        chunks.push(current);
+        current = '';
+      }
+    };
+
+    const appendLine = (line: string): void => {
       const newSection = current.length === 0 ? line : `${current}\n${line}`;
       if (newSection.length > maxLength) {
-        if (current.length > 0) chunks.push(current);
+        pushCurrent();
         current = line;
       } else {
         current = newSection;
       }
+    };
+
+    for (const line of lines) {
+      if (line.length <= maxLength) {
+        appendLine(line);
+        continue;
+      }
+
+      pushCurrent();
+      for (let i = 0; i < line.length; i += maxLength) {
+        chunks.push(line.slice(i, i + maxLength));
+      }
     }
-    if (current.length > 0) chunks.push(current);
+    pushCurrent();
     return chunks;
   }
 }

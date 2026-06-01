@@ -42,6 +42,7 @@ export type OverviewRunOptions = {
   };
   publish?: boolean;
   tokenBudget?: number;
+  force?: boolean;
 };
 
 export type OverviewRunResult = {
