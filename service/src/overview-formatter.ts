@@ -163,6 +163,9 @@ export class OverviewFormatter {
   }
 
   splitForTelegram(report: string, maxLength = 4096): string[] {
+    if (!Number.isInteger(maxLength) || maxLength < 1) {
+      throw new Error('maxLength must be a positive integer');
+    }
     if (report.length <= maxLength) return [report];
 
     const chunks: string[] = [];

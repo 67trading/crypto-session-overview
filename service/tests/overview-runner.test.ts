@@ -265,6 +265,27 @@ describe('OverviewRunner.run()', () => {
     expect(repo.saveOverview).toHaveBeenCalledOnce();
   });
 
+  it('records successful market-data and derivatives collector runs with source telemetry', async () => {
+    const repo = makeRepo();
+    const runner = new OverviewRunner(makeDeps({ repository: repo }));
+    await runner.run(RUN_OPTIONS);
+
+    expect(repo.saveCollectorRun).toHaveBeenCalledWith(expect.objectContaining({
+      collectorName: 'market-data',
+      status: 'SUCCESS',
+      source: 'market-data',
+      itemCount: 2,
+      durationMs: expect.any(Number),
+    }));
+    expect(repo.saveCollectorRun).toHaveBeenCalledWith(expect.objectContaining({
+      collectorName: 'derivatives',
+      status: 'SUCCESS',
+      source: 'derivatives',
+      itemCount: 2,
+      durationMs: expect.any(Number),
+    }));
+  });
+
   it('uses firstBriefBullets on first run (no previous brief)', async () => {
     const repo = makeRepo();
     repo.getLatestOverview.mockResolvedValue(null);
@@ -444,6 +465,8 @@ describe('OverviewRunner.run()', () => {
       overviewId: 'overview-id-1',
       status: 'FAILED',
       errorMessage: 'Telegram unavailable',
+      messageIndex: 0,
+      text: expect.any(String),
     }));
   });
 
@@ -469,8 +492,14 @@ describe('OverviewRunner.run()', () => {
 
     expect(result.telegramPublished).toBe(true);
     expect(result.telegramPostIds).toEqual(['msg-1']);
+    for (const call of publisher.publish.mock.calls) {
+      const [chunk] = call as [string];
+      expect(chunk.length).toBeLessThanOrEqual(4096);
+    }
     expect(repo.updateOverviewTelegramPosts).toHaveBeenCalledWith('overview-id-1', ['msg-1']);
     expect(repo.saveTelegramPost).toHaveBeenCalledWith(expect.objectContaining({
+      messageIndex: 1,
+      text: expect.any(String),
       status: 'FAILED',
       errorMessage: 'Telegram chunk 2 failed',
     }));

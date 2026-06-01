@@ -304,4 +304,9 @@ describe('OverviewFormatter.splitForTelegram()', () => {
       expect(chunk.length).toBeLessThanOrEqual(4096);
     }
   });
+
+  it('rejects invalid Telegram maxLength values', () => {
+    expect(() => formatter.splitForTelegram('report', 0)).toThrow(/maxLength/);
+    expect(() => formatter.splitForTelegram('report', 1.5)).toThrow(/maxLength/);
+  });
 });

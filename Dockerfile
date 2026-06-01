@@ -31,4 +31,4 @@ RUN npm run prisma:generate
 
 EXPOSE 3100
 
-CMD ["sh", "-c", "npm run prisma:push && npm start"]
+CMD ["sh", "-c", "npm run prisma:migrate:deploy && npm start"]

@@ -36,6 +36,7 @@ export function createServer(
 
   const overviewRouter = createSessionOverviewRouter(service, {
     ...(config.server.apiToken !== undefined ? { apiToken: config.server.apiToken } : {}),
+    rateLimit: config.server.triggerRateLimit,
   });
   app.use('/api/v1/session-overview', overviewRouter);
 
