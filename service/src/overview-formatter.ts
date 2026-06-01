@@ -111,7 +111,26 @@ export class OverviewFormatter {
 
     // Liquidity
     lines.push('Liquidity:');
+    const structuredLiquidity = [
+      output.liquidity.immediateUpside !== undefined
+        ? `Immediate upside resistance / liquidity: ${output.liquidity.immediateUpside}`
+        : undefined,
+      output.liquidity.recoveryZone !== undefined
+        ? `Recovery confirmation zone: ${output.liquidity.recoveryZone}`
+        : undefined,
+      output.liquidity.largerUpsideMagnet !== undefined
+        ? `Larger upside magnet / options area: ${output.liquidity.largerUpsideMagnet}`
+        : undefined,
+      output.liquidity.downsideVulnerability !== undefined
+        ? `Downside vulnerability: ${output.liquidity.downsideVulnerability}`
+        : undefined,
+    ].filter((line): line is string => line !== undefined);
+    for (const b of structuredLiquidity) {
+      lines.push(`* ${b}`);
+    }
+    const structuredText = new Set(structuredLiquidity.map((line) => line.toLowerCase()));
     for (const b of output.liquidity.bullets) {
+      if (structuredText.has(b.toLowerCase())) continue;
       lines.push(`* ${b}`);
     }
     lines.push('');

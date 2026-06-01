@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OverviewRunner } from '../src/overview-runner.js';
+import { PRODUCT_FOOTER_NOTE } from '../src/presentation-contract.js';
 import type { SessionOverviewDeps } from '../src/service-types.js';
 import type {
   OverviewMarketSnapshot,
@@ -48,7 +49,7 @@ function makeValidOutput(session = 'US_CRYPTO'): OverviewOutput {
     liquidity: { bullets: ['Cluster at 96,000.'] },
     events: { summary: 'Light calendar.', upcoming: [] },
     scenarios: { reclaim: 'Push to ATH.', rejection: 'Pullback to 95k.', chop: 'Range between 95-98k.' },
-    note: 'Data is fresh across all sources.',
+    note: 'LLM-provided note should be overridden.',
   };
 }
 
@@ -275,6 +276,14 @@ describe('OverviewRunner.run()', () => {
     expect(result.output?.whatChanged[0]).toMatch(/initial/i);
   });
 
+  it('overrides the LLM note with the exact product footer', async () => {
+    const runner = new OverviewRunner(makeDeps());
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.output?.note).toBe(PRODUCT_FOOTER_NOTE);
+    expect(result.humanReport).toContain(PRODUCT_FOOTER_NOTE);
+  });
+
   it('computes whatChanged via brief diff when a previous SUCCESS brief exists', async () => {
     const prevOutput = makeValidOutput();
     const repo = makeRepo();
@@ -440,7 +449,7 @@ describe('OverviewRunner.run()', () => {
 
   it('persists successful Telegram IDs when a later chunk fails', async () => {
     const longOutput = makeValidOutput();
-    longOutput.note = 'n'.repeat(5000);
+    longOutput.btc.summary = 'BTC '.repeat(1500);
     const publisher = {
       publish: vi.fn()
         .mockResolvedValueOnce(['msg-1'])
@@ -567,6 +576,43 @@ describe('OverviewRunner.run()', () => {
     expect(macro?.us10yYield).toBeCloseTo(4.5);
     expect(macro?.ecbDepositRate).toBeCloseTo(4.0);
     expect(macro?.ecbMainRate).toBeCloseTo(4.25);
+  });
+
+  it('passes cross-market, ETF, and options context to repository overview records', async () => {
+    const { mergeEtfFlowContext, mergeOptionsContext, contextCollectorEntry } = await import('../src/context-merge.js');
+    const repo = makeRepo();
+    const etfCollector = {
+      sourceName: 'sosovalue-etf',
+      collect: vi.fn().mockResolvedValue({
+        status: 'success' as const,
+        data: { btcFlowUsd: 12_000_000, date: '2026-06-01', source: 'sosovalue', sourceAvailable: true },
+        itemCount: 1,
+      }),
+    };
+    const optionsCollector = {
+      sourceName: 'deribit-options',
+      collect: vi.fn().mockResolvedValue({
+        status: 'success' as const,
+        data: [{ symbol: 'BTC', maxPainStrike: 75000 }],
+        itemCount: 1,
+      }),
+    };
+    const deps = makeDeps({
+      repository: repo,
+      contextCollectors: [
+        contextCollectorEntry(etfCollector, mergeEtfFlowContext),
+        contextCollectorEntry(optionsCollector, mergeOptionsContext),
+      ],
+    });
+    const runner = new OverviewRunner(deps);
+
+    await runner.run(RUN_OPTIONS);
+
+    expect(repo.saveOverview).toHaveBeenCalledWith(expect.objectContaining({
+      crossMarket: expect.objectContaining({ ethBtcTrendLabel: expect.any(String) }),
+      etfFlow: expect.objectContaining({ btcFlowUsd: 12_000_000 }),
+      options: [expect.objectContaining({ symbol: 'BTC', maxPainStrike: 75000 })],
+    }));
   });
 
   it('saves sourceHealth with correct healthyCount and failedCount', async () => {

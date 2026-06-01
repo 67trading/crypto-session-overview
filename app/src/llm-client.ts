@@ -44,6 +44,9 @@ STRICT RULES — violation causes the response to be rejected:
 5d. Do not make strong US rates or BoJ claims from missing FRED series. If fred-rates or boj-rates
     is partial/skipped with ACCESS_LIMITED_QUOTA, treat macro rates as incomplete context and avoid
     definitive wording like "rates confirm" or "BoJ confirms".
+5e. Use input.presentationContext for ETF/options/macro wording when present. Treat those bullets as
+    source-aware allowed wording. Do not make ETF/options/macro claims outside that context. If
+    presentationContext.etfNarrative.bullets is empty, do not mention ETF flows.
 6. Timeframes: only Weekly, Daily, 4H, Session. Never reference 1H, 15m, 5m.
 7. scenarios must always contain all three fields: reclaim, rejection, chop.
 8. whatChanged: if input.previousBrief is present, list 1–8 concise bullets describing what changed
@@ -112,7 +115,7 @@ Required JSON schema (all fields required):
     "rejection": "string — what plays out on rejection from the key level",
     "chop": "string — what plays out in a range/no-resolution scenario"
   },
-  "note": "string — closing note on data quality, key watchpoints, or caveats; always present"
+  "note": "string — exactly 'This is market context only. No entries, exits, position sizing or leverage.'"
 }`;
 
 type GeminiModelsApi = {

@@ -141,11 +141,11 @@ describe('computeWhatChanged()', () => {
       expect(result.some((b) => b.includes('Funding shift'))).toBe(true);
     });
 
-    it('ignores non-extreme funding changes', () => {
+    it('detects non-extreme funding changes', () => {
       const prev = makeOutput({ derivatives: { ...makeOutput().derivatives, funding: 'positive elevated across BTC/ETH' } });
       const curr = makeOutput({ derivatives: { ...makeOutput().derivatives, funding: 'negative elevated across BTC/ETH' } });
       const result = computeWhatChanged(prev, curr);
-      expect(result.some((b) => b.includes('Funding shift'))).toBe(false);
+      expect(result.some((b) => b.includes('Funding shift'))).toBe(true);
     });
 
     it('ignores when funding is unchanged', () => {
@@ -153,6 +153,34 @@ describe('computeWhatChanged()', () => {
       const result = computeWhatChanged(base, makeOutput({ derivatives: { ...makeOutput().derivatives, funding: 'extreme positive on BTC' } }));
       expect(result.some((b) => b.includes('Funding shift'))).toBe(false);
     });
+  });
+
+  it('detects BTC position changes', () => {
+    const prev = makeOutput({ btc: { ...makeOutput().btc, position: 'below 75K recovery zone' } });
+    const curr = makeOutput({ btc: { ...makeOutput().btc, position: 'inside 75K-77K recovery zone' } });
+    const result = computeWhatChanged(prev, curr);
+    expect(result).toContain('BTC position: below 75K recovery zone → inside 75K-77K recovery zone');
+  });
+
+  it('detects alt breadth changes', () => {
+    const prev = makeOutput({ alts: { ...makeOutput().alts, breadth: '30% green' } });
+    const curr = makeOutput({ alts: { ...makeOutput().alts, breadth: '55% green' } });
+    const result = computeWhatChanged(prev, curr);
+    expect(result).toContain('Alt breadth: 30% green → 55% green');
+  });
+
+  it('detects OI changes', () => {
+    const prev = makeOutput({ derivatives: { ...makeOutput().derivatives, oi: 'stable' } });
+    const curr = makeOutput({ derivatives: { ...makeOutput().derivatives, oi: 'rising quickly' } });
+    const result = computeWhatChanged(prev, curr);
+    expect(result).toContain('OI shift: stable → rising quickly');
+  });
+
+  it('detects liquidity map changes', () => {
+    const prev = makeOutput({ liquidity: { bullets: ['Recovery zone: 74K-75K.'] } });
+    const curr = makeOutput({ liquidity: { recoveryZone: '75K-77K', bullets: ['Recovery zone shifted higher.'] } });
+    const result = computeWhatChanged(prev, curr);
+    expect(result).toContain('Liquidity map changed.');
   });
 
   describe('ETH/BTC trend direction', () => {

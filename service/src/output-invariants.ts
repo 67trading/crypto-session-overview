@@ -1,4 +1,5 @@
 import type { OverviewInput, OverviewOutput } from './ports.js';
+import { PRODUCT_FOOTER_NOTE } from './presentation-contract.js';
 
 // Mirrors rule 2 in the LLM system prompt — these are execution instructions,
 // not market descriptions. Keep context terms like long-heavy / short-heavy allowed.
@@ -46,6 +47,10 @@ function collectWrittenStrings(output: OverviewOutput): string[] {
     output.derivatives.funding,
     output.derivatives.oi,
     output.derivatives.positioning,
+    output.liquidity?.immediateUpside,
+    output.liquidity?.recoveryZone,
+    output.liquidity?.largerUpsideMagnet,
+    output.liquidity?.downsideVulnerability,
     ...(output.liquidity?.bullets ?? []),
     output.events.summary,
     ...output.events.upcoming.map((e) => e.title),
@@ -54,7 +59,7 @@ function collectWrittenStrings(output: OverviewOutput): string[] {
     output.scenarios.chop,
     output.note,
     ...output.whatChanged,
-  ];
+  ].filter((value): value is string => typeof value === 'string');
 }
 
 function outputText(output: OverviewOutput): string {
@@ -73,6 +78,26 @@ function primaryUnlockSourceSucceeded(input: OverviewInput): boolean {
 function hasEtfFlowSource(input: OverviewInput): boolean {
   return input.etfFlowContext?.sourceAvailable === true
     && (input.etfFlowContext.btcFlowUsd !== undefined || input.etfFlowContext.ethFlowUsd !== undefined);
+}
+
+function hasAssetEtfFlowSource(input: OverviewInput, asset: 'btc' | 'eth'): boolean {
+  if (input.etfFlowContext?.sourceAvailable !== true) return false;
+  return asset === 'btc'
+    ? input.etfFlowContext.btcFlowUsd !== undefined
+    : input.etfFlowContext.ethFlowUsd !== undefined;
+}
+
+function hasDeribitOptionsSource(input: OverviewInput): boolean {
+  return (input.optionsContext?.length ?? 0) > 0
+    && input.sourceHealth?.collectors.some((collector) =>
+      (collector.name === 'deribit-options' || collector.source === 'deribit-options')
+      && (collector.status === 'success' || collector.status === 'partial')
+      && collector.itemCount > 0
+    ) === true;
+}
+
+function hasLiquidationClusters(input: OverviewInput): boolean {
+  return (input.liquidityContext?.clusters.length ?? 0) > 0;
 }
 
 function hasQuotaLimitedMacroSource(input: OverviewInput): boolean {
@@ -108,6 +133,7 @@ export function hasHardViolations(output: OverviewOutput): boolean {
   if (!output.liquidity?.bullets?.length) return true;
   if (!output.scenarios.reclaim || !output.scenarios.rejection || !output.scenarios.chop) return true;
   if (!output.note) return true;
+  if (output.note !== PRODUCT_FOOTER_NOTE) return true;
   return false;
 }
 
@@ -124,6 +150,7 @@ export function checkOutputInvariants(output: OverviewOutput): string[] {
   if (!output.scenarios.chop) violations.push('scenarios.chop must be non-empty');
 
   if (!output.note) violations.push('note must be non-empty');
+  if (output.note !== PRODUCT_FOOTER_NOTE) violations.push('note must match product footer contract');
 
   if (!output.briefId) violations.push('briefId must be non-empty');
   if (!output.generatedAtUtc) violations.push('generatedAtUtc must be non-empty');
@@ -140,6 +167,14 @@ export function checkSourceAwareOutputInvariants(output: OverviewOutput, input: 
   const mentionsEtfFlow = /\betf\b/.test(text) && /\b(flow|flows|inflow|inflows|outflow|outflows)\b/.test(text);
   if (mentionsEtfFlow && !hasEtfFlowSource(input)) {
     violations.push('ETF flow claims require a successful ETF flow source');
+  }
+  if (/\beth\b.{0,20}\betf\b.{0,40}\b(flow|flows|inflow|inflows|outflow|outflows)\b/.test(text)
+    && !hasAssetEtfFlowSource(input, 'eth')) {
+    violations.push('ETH ETF flow claims require successful ETH ETF flow data');
+  }
+  if (/\bbtc\b.{0,20}\betf\b.{0,40}\b(flow|flows|inflow|inflows|outflow|outflows)\b/.test(text)
+    && !hasAssetEtfFlowSource(input, 'btc')) {
+    violations.push('BTC ETF flow claims require successful BTC ETF flow data');
   }
 
   const saysNoUnlock = /\bno confirmed\b.{0,40}\b(token\s+)?unlocks?\b/.test(text)
@@ -161,6 +196,19 @@ export function checkSourceAwareOutputInvariants(output: OverviewOutput, input: 
     || /\b(?:fed|fred)\s+(?:data|rates?)\s+confirm(?:s|ed)?\b/.test(text);
   if (strongMacroClaim && hasQuotaLimitedMacroSource(input)) {
     violations.push('Strong macro rates claims require complete FRED/BoJ source data');
+  }
+
+  const optionsClaim = /\b(?:deribit|options?|max pain|put\/call|implied vol|iv)\b/.test(text)
+    && /\b(?:expiry|strike|magnet|max pain|put\/call|implied vol|iv|pinning|options? area)\b/.test(text);
+  if (optionsClaim && !hasDeribitOptionsSource(input)) {
+    violations.push('Options claims require successful Deribit options context');
+  }
+
+  const exactClusterClaim = /\b(?:nearest|large|major|exact|confirmed)\b.{0,40}\bliquidation clusters?\b/.test(text)
+    || /\bliquidation clusters?\b.{0,40}\b(?:above|below|at|near|around)\s+\$?\d/.test(text)
+    || /\bliquidation heatmap shows\b/.test(text);
+  if (exactClusterClaim && !hasLiquidationClusters(input)) {
+    violations.push('Exact liquidation cluster claims require confirmed liquidity cluster data');
   }
 
   return violations;
