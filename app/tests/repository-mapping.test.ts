@@ -45,6 +45,9 @@ describe('PrismaSessionOverviewRepository overview mapping', () => {
         skippedCount: 0,
       }),
       dataStatusJson: JSON.stringify({ price: 'fresh', events: 'partial', derivatives: 'fresh', liquidations: 'unavailable' }),
+      crossMarketJson: JSON.stringify({ ethBtcTrendLabel: 'ETH/BTC sideways', dominanceSignal: 'mixed' }),
+      etfFlowJson: JSON.stringify({ btcFlowUsd: 12_000_000, date: '2026-06-01', source: 'sosovalue', sourceAvailable: true }),
+      optionsJson: JSON.stringify([{ symbol: 'BTC', maxPainStrike: 75000 }]),
       sessionWindowStart: null,
       sessionWindowEnd: null,
       runKey: null,
@@ -55,6 +58,9 @@ describe('PrismaSessionOverviewRepository overview mapping', () => {
       toOverviewRecord(input: typeof row): {
         sourceHealth?: unknown;
         dataStatus?: unknown;
+        crossMarket?: unknown;
+        etfFlow?: unknown;
+        options?: unknown;
       };
     }).toOverviewRecord(row);
 
@@ -71,5 +77,8 @@ describe('PrismaSessionOverviewRepository overview mapping', () => {
       derivatives: 'fresh',
       liquidations: 'unavailable',
     });
+    expect(record.crossMarket).toEqual(expect.objectContaining({ ethBtcTrendLabel: 'ETH/BTC sideways' }));
+    expect(record.etfFlow).toEqual(expect.objectContaining({ btcFlowUsd: 12_000_000 }));
+    expect(record.options).toEqual([expect.objectContaining({ symbol: 'BTC', maxPainStrike: 75000 })]);
   });
 });

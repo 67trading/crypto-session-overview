@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { OverviewFormatter } from '../src/overview-formatter.js';
+import { PRODUCT_FOOTER_NOTE } from '../src/presentation-contract.js';
 import type { OverviewOutput } from '../src/ports.js';
 
 function makeOutput(overrides: Partial<OverviewOutput> = {}): OverviewOutput {
@@ -56,7 +57,7 @@ function makeOutput(overrides: Partial<OverviewOutput> = {}): OverviewOutput {
       rejection: 'Failure at 97,400 — retest 95,800 daily open.',
       chop: 'Range 95,800–97,400, no clean resolution.',
     },
-    note: 'Liquidation cluster data unavailable — confirm with live terminal before sizing decisions.',
+    note: PRODUCT_FOOTER_NOTE,
   };
   return { ...base, ...overrides };
 }
@@ -158,6 +159,24 @@ describe('OverviewFormatter.format()', () => {
     expect(result).toContain('* Bullet three.');
   });
 
+  it('renders structured liquidity fields before fallback bullets', () => {
+    const output = makeOutput({
+      liquidity: {
+        immediateUpside: '75K supply',
+        recoveryZone: '75K-77K',
+        largerUpsideMagnet: '80K options area',
+        downsideVulnerability: 'low 73K area',
+        bullets: ['No confirmed liquidation cluster data available.'],
+      },
+    });
+    const result = formatter.format(output);
+    expect(result).toContain('* Immediate upside resistance / liquidity: 75K supply');
+    expect(result).toContain('* Recovery confirmation zone: 75K-77K');
+    expect(result).toContain('* Larger upside magnet / options area: 80K options area');
+    expect(result).toContain('* Downside vulnerability: low 73K area');
+    expect(result).toContain('* No confirmed liquidation cluster data available.');
+  });
+
   it('liquidity section appears after derivatives and before events', () => {
     const output = makeOutput({
       events: {
@@ -214,7 +233,7 @@ describe('OverviewFormatter.format()', () => {
   it('includes footer separator and note', () => {
     const result = formatter.format(makeOutput());
     expect(result).toContain('─────────────────────');
-    expect(result).toContain('Liquidation cluster data unavailable');
+    expect(result).toContain(PRODUCT_FOOTER_NOTE);
   });
 
   it('omits derivatives summary line when summary is blank', () => {

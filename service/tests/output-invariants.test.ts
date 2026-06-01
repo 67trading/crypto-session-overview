@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { scanForForbiddenPhrases, checkOutputInvariants, checkSourceAwareOutputInvariants, hasHardViolations, FORBIDDEN_PHRASES } from '../src/output-invariants.js';
+import { PRODUCT_FOOTER_NOTE } from '../src/presentation-contract.js';
 import type { OverviewInput, OverviewOutput } from '../src/ports.js';
 
 function makeOutput(overrides: Partial<OverviewOutput> = {}): OverviewOutput {
@@ -19,7 +20,7 @@ function makeOutput(overrides: Partial<OverviewOutput> = {}): OverviewOutput {
     liquidity: { bullets: ['No significant liquidity clusters identified.'] },
     events: { summary: 'Light macro calendar.', upcoming: [{ title: 'CPI Release', time: '2026-01-02T13:30:00Z', importance: 'critical' }] },
     scenarios: { reclaim: 'Continuation toward ATH.', rejection: 'Pullback to support.', chop: 'Range persists.' },
-    note: 'No caveats.',
+    note: PRODUCT_FOOTER_NOTE,
     ...overrides,
   };
 }
@@ -211,6 +212,12 @@ describe('checkOutputInvariants()', () => {
     expect(violations.some((v) => v.includes('note'))).toBe(true);
   });
 
+  it('flags note that does not match the product footer contract', () => {
+    const output = makeOutput({ note: 'Data quality normal.' });
+    const violations = checkOutputInvariants(output);
+    expect(violations).toContain('note must match product footer contract');
+  });
+
   it('flags empty briefId', () => {
     const output = makeOutput({ briefId: '' });
     const violations = checkOutputInvariants(output);
@@ -237,6 +244,14 @@ describe('checkSourceAwareOutputInvariants()', () => {
       etfFlowContext: { btcFlowUsd: 10_000_000, date: '2026-01-01', source: 'sosovalue', sourceAvailable: true },
     });
     expect(checkSourceAwareOutputInvariants(output, input)).toHaveLength(0);
+  });
+
+  it('flags ETH ETF flow claims when only BTC ETF flow data is available', () => {
+    const output = makeOutput({ note: 'ETH ETF flows were positive.' });
+    const input = makeInput({
+      etfFlowContext: { btcFlowUsd: 10_000_000, date: '2026-01-01', source: 'sosovalue', sourceAvailable: true },
+    });
+    expect(checkSourceAwareOutputInvariants(output, input)).toContain('ETH ETF flow claims require successful ETH ETF flow data');
   });
 
   it('flags no-unlock claims unless mobula-unlocks succeeded', () => {
@@ -331,6 +346,55 @@ describe('checkSourceAwareOutputInvariants()', () => {
     });
 
     expect(checkSourceAwareOutputInvariants(output, input)).toHaveLength(0);
+  });
+
+  it('flags options claims when Deribit options context is unavailable', () => {
+    const output = makeOutput({
+      liquidity: {
+        bullets: ['Deribit BTC options expiry keeps 75K max pain relevant.'],
+      },
+    });
+    expect(checkSourceAwareOutputInvariants(output, makeInput())).toContain('Options claims require successful Deribit options context');
+  });
+
+  it('allows options claims when Deribit options context is available', () => {
+    const output = makeOutput({
+      liquidity: {
+        bullets: ['Deribit BTC options context keeps max pain 75000 relevant.'],
+      },
+    });
+    const input = makeInput({
+      optionsContext: [{ symbol: 'BTC', maxPainStrike: 75000 }],
+      sourceHealth: {
+        collectors: [{ name: 'deribit-options', source: 'deribit-options', status: 'success', itemCount: 1 }],
+        healthyCount: 1,
+        partialCount: 0,
+        failedCount: 0,
+        skippedCount: 0,
+      },
+    });
+    expect(checkSourceAwareOutputInvariants(output, input)).toHaveLength(0);
+  });
+
+  it('flags exact liquidation cluster claims without confirmed cluster data', () => {
+    const output = makeOutput({
+      liquidity: {
+        bullets: ['Large liquidation cluster above 75K is the nearest upside magnet.'],
+      },
+    });
+    expect(checkSourceAwareOutputInvariants(output, makeInput())).toContain('Exact liquidation cluster claims require confirmed liquidity cluster data');
+  });
+
+  it('allows general liquidation pressure wording without cluster data', () => {
+    const output = makeOutput({
+      derivatives: {
+        summary: 'Liquidation activity increased during the selloff.',
+        funding: 'neutral',
+        oi: 'rising',
+        positioning: 'long-heavy',
+      },
+    });
+    expect(checkSourceAwareOutputInvariants(output, makeInput())).toHaveLength(0);
   });
 });
 

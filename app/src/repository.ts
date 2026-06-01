@@ -266,6 +266,9 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
     model: string | null;
     sourceHealthJson?: string | null;
     dataStatusJson?: string | null;
+    crossMarketJson?: string | null;
+    etfFlowJson?: string | null;
+    optionsJson?: string | null;
     sessionWindowStart?: Date | null;
     sessionWindowEnd?: Date | null;
     runKey?: string | null;
@@ -292,6 +295,18 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
     }
     if (row.dataStatusJson !== null && row.dataStatusJson !== undefined) {
       record.dataStatus = JSON.parse(row.dataStatusJson) as NonNullable<OverviewRecord['dataStatus']>;
+    }
+    if (row.crossMarketJson !== null && row.crossMarketJson !== undefined) {
+      const parsed = JSON.parse(row.crossMarketJson) as unknown;
+      if (parsed !== null) record.crossMarket = parsed;
+    }
+    if (row.etfFlowJson !== null && row.etfFlowJson !== undefined) {
+      const parsed = JSON.parse(row.etfFlowJson) as unknown;
+      if (parsed !== null) record.etfFlow = parsed;
+    }
+    if (row.optionsJson !== null && row.optionsJson !== undefined) {
+      const parsed = JSON.parse(row.optionsJson) as unknown;
+      if (parsed !== null) record.options = parsed;
     }
     return record;
   }

@@ -13,6 +13,7 @@ import type {
   DataStatusValue,
   DataStatus,
 } from '../../core/src/index.js';
+import type { PresentationContext } from './presentation-contract.js';
 
 // ─── Domain types (imported from session-overview-core) ──────────────────────
 
@@ -253,6 +254,7 @@ export type OverviewInput = {
   stablecoinContext?: StablecoinContext;
   chainFlowContext?: ChainFlowContext;
   sourceHealth?: SourceHealthSummary;
+  presentationContext?: PresentationContext;
 };
 
 // ─── Collection ports ──────────────────────────────────────────────────────────

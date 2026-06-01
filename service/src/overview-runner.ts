@@ -22,6 +22,7 @@ import { analyzeAltsBreadth } from './alts-breadth-analyzer.js';
 import { buildDerivativesNarrative } from './derivatives-narrative-builder.js';
 import { preprocessEvents } from './events-preprocessor.js';
 import { analyzeCrossMarket } from './cross-market-analyzer.js';
+import { PRODUCT_FOOTER_NOTE, buildPresentationContext } from './presentation-contract.js';
 import { metrics } from './metrics.js';
 import {
   computeWeeklyLevels,
@@ -448,6 +449,10 @@ export class OverviewRunner {
       ];
       const sourceHealth = buildSourceHealthSummary(allCollectorQuality);
       augmentedInput = { ...augmentedInput, sourceHealth };
+      augmentedInput = {
+        ...augmentedInput,
+        presentationContext: buildPresentationContext(augmentedInput),
+      };
 
       // 8. Persist critical collector telemetry before any later DB write can fail.
       await Promise.all(criticalCollectorRuns.map((r) => repository.saveCollectorRun(r)));
@@ -509,6 +514,7 @@ export class OverviewRunner {
         whatChanged: previousOutput !== null
           ? computeWhatChanged(previousOutput, llmResult.output)
           : firstBriefBullets(),
+        note: PRODUCT_FOOTER_NOTE,
       };
 
       // 11b. Hard invariant sweep — hard violations downgrade to PARTIAL and block publish
@@ -542,6 +548,9 @@ export class OverviewRunner {
           telegramPostIds,
           model: this.deps.llmClient.modelName,
           sourceHealth,
+          ...(augmentedInput.crossMarket !== undefined ? { crossMarket: augmentedInput.crossMarket } : {}),
+          ...(augmentedInput.etfFlowContext !== undefined ? { etfFlow: augmentedInput.etfFlowContext } : {}),
+          ...(augmentedInput.optionsContext !== undefined ? { options: augmentedInput.optionsContext } : {}),
           sessionWindowStart,
           sessionWindowEnd,
           runKey,
@@ -679,7 +688,7 @@ export class OverviewRunner {
             events: { summary: 'Data unavailable.', upcoming: [] },
             liquidity: { bullets: ['No confirmed liquidity cluster data available for this session.'] },
             scenarios: { reclaim: 'No data.', rejection: 'No data.', chop: 'No data.' },
-            note: `Run failed: ${errorMessage}`,
+            note: PRODUCT_FOOTER_NOTE,
           },
           sessionWindowStart,
           sessionWindowEnd,
