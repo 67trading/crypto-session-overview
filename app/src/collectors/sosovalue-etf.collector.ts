@@ -72,6 +72,14 @@ async function fetchAsset(asset: EtfAsset): Promise<{ asset: EtfAsset; date: str
   return { asset, date, flowUsd };
 }
 
+function reasonCodeFromErrors(errors: string[]): 'ACCESS_LIMITED' | 'ACCESS_LIMITED_QUOTA' | 'TRANSIENT_NETWORK_ERROR' | 'PARSER_ERROR' {
+  const transient = errors.some((err) => /\b5\d\d\b/.test(err) || /fetch failed|network/i.test(err));
+  if (transient) return 'TRANSIENT_NETWORK_ERROR';
+  if (errors.some((err) => /\b429\b/.test(err))) return 'ACCESS_LIMITED_QUOTA';
+  if (errors.some((err) => /\b(401|402|403)\b/.test(err))) return 'ACCESS_LIMITED';
+  return 'PARSER_ERROR';
+}
+
 export class SoSoValueEtfCollector implements ContextCollector<EtfFlowContext> {
   readonly sourceName = 'sosovalue-etf';
 
@@ -85,12 +93,11 @@ export class SoSoValueEtfCollector implements ContextCollector<EtfFlowContext> {
     ];
 
     if (btcValue === undefined && ethValue === undefined) {
-      const accessLimited = errors.some((err) => /\b(401|402|403|429)\b/.test(err));
-      const transient = errors.some((err) => /\b5\d\d\b/.test(err) || /fetch failed|network/i.test(err));
+      const reasonCode = reasonCodeFromErrors(errors);
       return {
-        status: transient ? 'failed' : 'skipped',
+        status: reasonCode === 'TRANSIENT_NETWORK_ERROR' ? 'failed' : 'skipped',
         itemCount: 0,
-        reasonCode: transient ? 'TRANSIENT_NETWORK_ERROR' : accessLimited ? 'ACCESS_LIMITED' : 'PARSER_ERROR',
+        reasonCode,
         error: errors.join('; '),
       };
     }
@@ -110,7 +117,7 @@ export class SoSoValueEtfCollector implements ContextCollector<EtfFlowContext> {
       data,
       itemCount: [btcValue, ethValue].filter((v) => v !== undefined).length,
       source: 'sosovalue',
-      ...(errors.length > 0 ? { error: errors.join('; '), reasonCode: errors.some((err) => /\b5\d\d\b/.test(err) || /fetch failed|network/i.test(err)) ? 'TRANSIENT_NETWORK_ERROR' as const : 'PARSER_ERROR' as const } : {}),
+      ...(errors.length > 0 ? { error: errors.join('; '), reasonCode: reasonCodeFromErrors(errors) } : {}),
     };
   }
 }

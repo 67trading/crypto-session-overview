@@ -95,7 +95,6 @@ function passesFilter(candidate: UnlockCandidate, focusSymbols: Set<string>): bo
   if (candidate.circulatingSupply > 0 && candidate.tokenCount > candidate.circulatingSupply * 0.01) return true;
   if (focusSymbols.has(candidate.symbol)) return true;
   if (candidate.rank <= 200) return true;
-  if (candidate.circulatingSupply > 0 && candidate.tokenCount > candidate.circulatingSupply * 0.05) return true;
   return false;
 }
 
@@ -136,9 +135,20 @@ export class MobulaUnlocksCollector implements EventCollector {
     const major = ctx.symbols?.major ?? [];
     const watch = ctx.symbols?.watch ?? [];
     const assets = toAssetQuery([...core, ...major, ...watch, ...this.focusSymbols]);
-    const response = await fetch(`${MULTI_METADATA_URL}?assets=${encodeURIComponent(assets)}`, {
-      headers: { 'User-Agent': UA, Authorization: this.apiKey },
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${MULTI_METADATA_URL}?assets=${encodeURIComponent(assets)}`, {
+        headers: { 'User-Agent': UA, Authorization: this.apiKey },
+      });
+    } catch (err) {
+      return {
+        status: 'failed',
+        data: [],
+        itemCount: 0,
+        reasonCode: 'TRANSIENT_NETWORK_ERROR',
+        error: `Mobula unlock metadata network error: ${String(err)}`,
+      };
+    }
 
     if (!response.ok) {
       if (response.status === 401 || response.status === 402 || response.status === 403) {
@@ -147,7 +157,10 @@ export class MobulaUnlocksCollector implements EventCollector {
       if (response.status === 429) {
         return { status: 'skipped', data: [], itemCount: 0, reasonCode: 'ACCESS_LIMITED_QUOTA', error: `Mobula unlock metadata quota/rate limited: ${response.status} ${response.statusText}` };
       }
-      throw new Error(`Mobula unlock metadata fetch failed: ${response.status} ${response.statusText}`);
+      if (response.status >= 500) {
+        return { status: 'failed', data: [], itemCount: 0, reasonCode: 'TRANSIENT_NETWORK_ERROR', error: `Mobula unlock metadata transient error: ${response.status} ${response.statusText}` };
+      }
+      return { status: 'skipped', data: [], itemCount: 0, reasonCode: 'PARSER_ERROR', error: `Mobula unlock metadata unexpected HTTP response: ${response.status} ${response.statusText}` };
     }
 
     let body: unknown;

@@ -51,6 +51,15 @@ describe('SoSoValueEtfCollector', () => {
     expect(result.reasonCode).toBe('ACCESS_LIMITED');
   });
 
+  it('returns skipped quota reason when both assets are rate-limited', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Rate limited', { status: 429 })));
+
+    const result = await new SoSoValueEtfCollector().collect(ctx);
+
+    expect(result.status).toBe('skipped');
+    expect(result.reasonCode).toBe('ACCESS_LIMITED_QUOTA');
+  });
+
   it('returns skipped parser error when response shape changes', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: 0, data: [] }), { status: 200 })));
 

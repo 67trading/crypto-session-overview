@@ -120,9 +120,32 @@ describe('MobulaUnlocksCollector', () => {
     expect(result.reasonCode).toBe('PARSER_ERROR');
   });
 
-  it('throws on transient Mobula 5xx failures', async () => {
+  it('maps transient Mobula 5xx failures to failed reason code', async () => {
     mockMetadataResponse({}, 502);
 
-    await expect(new MobulaUnlocksCollector('key').collect(ctx)).rejects.toThrow('502');
+    const result = await new MobulaUnlocksCollector('key').collect(ctx);
+
+    expect(result.status).toBe('failed');
+    expect(result.reasonCode).toBe('TRANSIENT_NETWORK_ERROR');
+    expect(result.error).toContain('502');
+  });
+
+  it('maps Mobula network failures to failed transient reason code', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
+
+    const result = await new MobulaUnlocksCollector('key').collect(ctx);
+
+    expect(result.status).toBe('failed');
+    expect(result.reasonCode).toBe('TRANSIENT_NETWORK_ERROR');
+    expect(result.error).toContain('network down');
+  });
+
+  it('maps unexpected Mobula 4xx responses to parser skipped', async () => {
+    mockMetadataResponse({}, 418);
+
+    const result = await new MobulaUnlocksCollector('key').collect(ctx);
+
+    expect(result.status).toBe('skipped');
+    expect(result.reasonCode).toBe('PARSER_ERROR');
   });
 });
