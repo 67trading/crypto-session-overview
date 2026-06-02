@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GeminiLlmClient } from '../src/llm-client.js';
 import type { OverviewInput, OverviewOutput } from '../../service/src/ports.js';
 
@@ -44,6 +44,10 @@ function makeOutput(): OverviewOutput {
 }
 
 describe('GeminiLlmClient', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('requests enough output tokens for full JSON briefs', async () => {
     const generateContent = vi.fn().mockResolvedValue({
       text: JSON.stringify(makeOutput()),
@@ -58,7 +62,26 @@ describe('GeminiLlmClient', () => {
       config: expect.objectContaining({
         maxOutputTokens: 8192,
         responseMimeType: 'application/json',
+        thinkingConfig: { thinkingBudget: 0 },
       }),
     }));
+  });
+
+  it('includes Gemini finish diagnostics when JSON parsing fails', async () => {
+    vi.useFakeTimers();
+    const generateContent = vi.fn().mockResolvedValue({
+      text: '{"briefConfidence":"h',
+      candidates: [{ finishReason: 'MAX_TOKENS', tokenCount: 8192 }],
+      usageMetadata: { promptTokenCount: 9000, candidatesTokenCount: 8192, thoughtsTokenCount: 7000, totalTokenCount: 24192 },
+    });
+    const client = new GeminiLlmClient('test-key', 'gemini-2.5-flash', { generateContent });
+
+    const promise = client.generateOverview(makeInput()).catch((err: unknown) => err);
+    await vi.runAllTimersAsync();
+    const err = await promise;
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(
+      /textLength=21, finishReason=MAX_TOKENS, candidateTokenCount=8192, promptTokenCount=9000, thoughtsTokenCount=7000, totalTokenCount=24192/,
+    );
   });
 });

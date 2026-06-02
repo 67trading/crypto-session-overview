@@ -7,6 +7,18 @@ const SESSION_LABEL: Record<CryptoSession, string> = {
 };
 
 const FRANKFURT_TZ = 'Europe/Berlin';
+const TELEGRAM_MESSAGE_LIMIT = 4096;
+const MAX_WHAT_CHANGED = 4;
+const MAX_LIQUIDITY_LINES = 5;
+const MAX_EVENTS = 5;
+const MAX_SUMMARY_CHARS = 180;
+const MAX_DETAIL_CHARS = 160;
+const MAX_LEVELS_CHARS = 140;
+const COMPACT_MESSAGE_LIMIT = 2800;
+const COMPACT_DETAIL_CHARS = 120;
+const COMPACT_SUMMARY_CHARS = 110;
+const COMPACT_FOOTER_NOTE = 'Context only. No entries/exits/sizing/leverage.';
+const HTML_COMPACT_MESSAGE_LIMIT = 2800;
 
 const IMPORTANCE_SYMBOL: Record<string, string> = {
   critical: '🔴',
@@ -38,6 +50,196 @@ function toFrankfurtHHmm(utcIso: string): string {
   }).format(date);
 }
 
+function compact(text: string, maxChars: number): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
+}
+
+function compactComplete(text: string, maxChars: number): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxChars) return normalized;
+
+  const slice = normalized.slice(0, maxChars).trimEnd();
+  const boundary = Math.max(
+    slice.lastIndexOf('.'),
+    slice.lastIndexOf(';'),
+    slice.lastIndexOf(','),
+    slice.lastIndexOf(' · '),
+  );
+  if (boundary >= Math.floor(maxChars * 0.55)) return slice.slice(0, boundary + 1).trim();
+
+  const wordBoundary = slice.lastIndexOf(' ');
+  if (wordBoundary >= Math.floor(maxChars * 0.55)) return slice.slice(0, wordBoundary).trim();
+  return slice.trim();
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function stripHtmlTags(text: string): string {
+  return text.replace(/<\/?(?:b|i|u|s|code|pre|blockquote|a)(?:\s+[^>]*)?>/g, '');
+}
+
+function b(text: string): string {
+  return `<b>${escapeHtml(text)}</b>`;
+}
+
+function code(text: string): string {
+  return `<code>${escapeHtml(text)}</code>`;
+}
+
+function pushIfNonEmpty(lines: string[], line: string): void {
+  const trimmed = line.trim();
+  if (trimmed !== '') lines.push(trimmed);
+}
+
+function normalizeForDedup(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, ' ').replace(/[.:;,\s]+$/g, '').trim();
+}
+
+function capReportLength(report: string, maxLength = TELEGRAM_MESSAGE_LIMIT): string {
+  if (report.length <= maxLength) return report;
+
+  const footerMarker = '\n─────────────────────\n';
+  const markerIndex = report.lastIndexOf(footerMarker);
+  const footer = markerIndex >= 0 ? report.slice(markerIndex) : '';
+  const body = markerIndex >= 0 ? report.slice(0, markerIndex) : report;
+  const availableBodyLength = maxLength - footer.length - 4;
+
+  if (availableBodyLength <= 0) return report.slice(0, maxLength);
+
+  return `${body.slice(0, availableBodyLength).trimEnd()}\n...${footer}`;
+}
+
+function capHtmlReportLength(report: string, maxLength: number): string {
+  if (report.length <= maxLength) return report;
+
+  const lines = report.split('\n');
+  const footer = lines.at(-1) ?? '';
+  const bodyLines = lines.slice(0, -1);
+  const capped: string[] = [];
+  const truncatedLine = '⚠️ Brief shortened to fit Telegram.';
+
+  for (const line of bodyLines) {
+    const candidate = [...capped, line, truncatedLine, '', footer].join('\n');
+    if (candidate.length > maxLength) break;
+    capped.push(line);
+  }
+
+  if (capped.length === 0 && bodyLines.length > 0) {
+    const reserved = `\n${truncatedLine}\n\n${footer}`.length;
+    const available = Math.max(0, maxLength - reserved);
+    const firstLine = stripHtmlTags(bodyLines[0] ?? '').slice(0, available).trimEnd();
+    return [escapeHtml(firstLine), truncatedLine, '', footer].filter((line) => line !== '').join('\n').trim();
+  }
+
+  return [...capped, truncatedLine, '', footer].join('\n').trim();
+}
+
+function formatLevels(levels: string[], maxChars: number): string | undefined {
+  if (levels.length === 0) return undefined;
+  return compact(levels.join(' · '), maxChars);
+}
+
+function formatHtmlLevels(levels: string[], maxItems: number): string[] {
+  return levels.slice(0, maxItems).map((level) => code(compactComplete(level, 70)));
+}
+
+function compactLiquidityLines(output: OverviewOutput): string[] {
+  const candidates = [
+    output.liquidity.immediateUpside !== undefined ? `Upside: ${output.liquidity.immediateUpside}` : undefined,
+    output.liquidity.recoveryZone !== undefined ? `Recovery: ${output.liquidity.recoveryZone}` : undefined,
+    output.liquidity.largerUpsideMagnet !== undefined ? `Magnet: ${output.liquidity.largerUpsideMagnet}` : undefined,
+    output.liquidity.downsideVulnerability !== undefined ? `Downside: ${output.liquidity.downsideVulnerability}` : undefined,
+  ].filter((line): line is string => line !== undefined);
+
+  const existing = new Set<string>();
+  for (const line of candidates) {
+    const [label, ...valueParts] = line.split(':');
+    existing.add(normalizeForDedup(line));
+    if (valueParts.length > 0) existing.add(normalizeForDedup(valueParts.join(':')));
+    else existing.add(normalizeForDedup(label ?? line));
+  }
+  for (const bullet of output.liquidity.bullets) {
+    if (candidates.length >= 3) break;
+    if (existing.has(normalizeForDedup(bullet))) continue;
+    candidates.push(bullet);
+  }
+
+  return candidates.slice(0, 3).map((line) => compact(line, COMPACT_DETAIL_CHARS));
+}
+
+function compactHtmlLiquidityLines(output: OverviewOutput): { label: string; value: string }[] {
+  const candidates = [
+    output.liquidity.recoveryZone !== undefined ? { label: 'Recovery', value: output.liquidity.recoveryZone } : undefined,
+    output.liquidity.immediateUpside !== undefined ? { label: 'Resistance', value: output.liquidity.immediateUpside } : undefined,
+    output.liquidity.largerUpsideMagnet !== undefined ? { label: 'Options ref', value: output.liquidity.largerUpsideMagnet } : undefined,
+    output.liquidity.downsideVulnerability !== undefined ? { label: 'Vulnerability', value: output.liquidity.downsideVulnerability } : undefined,
+  ].filter((line): line is { label: string; value: string } => line !== undefined);
+
+  if (candidates.length >= 4) return candidates.slice(0, 4);
+
+  const existing = new Set<string>();
+  for (const line of candidates) {
+    existing.add(normalizeForDedup(`${line.label}:${line.value}`));
+    existing.add(normalizeForDedup(line.value));
+  }
+  for (const bullet of output.liquidity.bullets) {
+    if (candidates.length >= 4) break;
+    const normalized = normalizeForDedup(bullet);
+    if (existing.has(normalized)) continue;
+    candidates.push({ label: 'Note', value: bullet });
+  }
+
+  return candidates.slice(0, 4);
+}
+
+function confidenceMarker(confidence: OverviewOutput['briefConfidence']): string {
+  if (confidence === 'high') return '🟢';
+  if (confidence === 'medium') return '🟡';
+  return '⚪';
+}
+
+function marketMarker(value: string): string {
+  const normalized = value.toLowerCase();
+  if (normalized.includes('liquidation') || normalized.includes('stress') || normalized.includes('extreme') || normalized.includes('heavy') || normalized.includes('crowded')) return '⚫';
+  if (normalized.includes('bull') || normalized.includes('risk_on') || normalized.includes('constructive') || normalized.includes('improving')) return '🟢';
+  if (normalized.includes('bear') || normalized.includes('risk_off') || normalized.includes('defensive') || normalized.includes('weak') || normalized.includes('short_heavy')) return '🔴';
+  if (normalized.includes('mixed') || normalized.includes('transition') || normalized.includes('range') || normalized.includes('selective')) return '🟡';
+  return '⚪';
+}
+
+function formatRegimeForTelegram(output: OverviewOutput): string {
+  if (output.marketRegime === 'short_heavy_near_support' && !output.derivatives.positioning.toLowerCase().includes('short')) {
+    return 'Defensive breakdown near support';
+  }
+  return output.marketRegime.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function dataStatusMarker(status: string): string {
+  if (status === 'fresh') return '✅';
+  if (status === 'partial' || status === 'stale') return '⚠️';
+  if (status === 'failed' || status === 'unavailable') return '❌';
+  return '⚪';
+}
+
+function eventMarker(importance: string): string {
+  if (importance === 'critical' || importance === 'high') return '🔴';
+  if (importance === 'medium') return '🟠';
+  if (importance === 'low') return '🔵';
+  return '⚪';
+}
+
+function isInitialRead(output: OverviewOutput): boolean {
+  return output.whatChanged.some((bullet) => bullet.toLowerCase().includes('initial reading')
+    || bullet.toLowerCase().includes('no previous brief'));
+}
+
 export class OverviewFormatter {
   format(output: OverviewOutput): string {
     const { session } = output;
@@ -58,44 +260,44 @@ export class OverviewFormatter {
 
     // What changed
     lines.push('📌 What changed');
-    for (const bullet of output.whatChanged) {
-      lines.push(`• ${bullet}`);
+    for (const bullet of output.whatChanged.slice(0, MAX_WHAT_CHANGED)) {
+      lines.push(`• ${compact(bullet, MAX_DETAIL_CHARS)}`);
     }
     lines.push('');
 
     // BTC
     lines.push('₿ BTC');
-    lines.push(output.btc.summary);
+    pushIfNonEmpty(lines, compact(output.btc.summary, MAX_SUMMARY_CHARS));
     if (output.btc.keyLevels.length > 0) {
-      lines.push(`Key levels: ${output.btc.keyLevels.join(' · ')}`);
+      lines.push(`Key levels: ${compact(output.btc.keyLevels.join(' · '), MAX_LEVELS_CHARS)}`);
     }
-    lines.push(`Position: ${output.btc.position}  |  Structure: ${output.btc.structure}`);
+    lines.push(`Position: ${compact(output.btc.position, MAX_DETAIL_CHARS)}  |  Structure: ${output.btc.structure}`);
     lines.push('');
 
     // ETH
     lines.push('Ξ ETH');
-    lines.push(output.eth.summary);
-    lines.push(`vs BTC: ${output.eth.vsbtc}`);
+    pushIfNonEmpty(lines, compact(output.eth.summary, MAX_SUMMARY_CHARS));
+    lines.push(`vs BTC: ${compact(output.eth.vsbtc, MAX_DETAIL_CHARS)}`);
     if (output.eth.keyLevels.length > 0) {
-      lines.push(`Key levels: ${output.eth.keyLevels.join(' · ')}`);
+      lines.push(`Key levels: ${compact(output.eth.keyLevels.join(' · '), MAX_LEVELS_CHARS)}`);
     }
     lines.push('');
 
     // Alts
     lines.push('🌊 Alts');
-    lines.push(output.alts.summary);
+    pushIfNonEmpty(lines, compact(output.alts.summary, MAX_SUMMARY_CHARS));
     lines.push(
-      `Rotation: ${output.alts.rotationState.replace(/_/g, ' ')}  |  Breadth: ${output.alts.breadth}`,
+      `Rotation: ${output.alts.rotationState.replace(/_/g, ' ')}  |  Breadth: ${compact(output.alts.breadth, MAX_DETAIL_CHARS)}`,
     );
     lines.push('');
 
     // Derivatives
     lines.push('📊 Derivatives');
     lines.push(
-      `Funding: ${output.derivatives.funding}  |  OI: ${output.derivatives.oi}  |  Positioning: ${output.derivatives.positioning}`,
+      `Funding: ${compact(output.derivatives.funding, 90)}  |  OI: ${compact(output.derivatives.oi, 90)}  |  Positioning: ${compact(output.derivatives.positioning, 90)}`,
     );
     if (output.derivatives.summary.trim() !== '') {
-      lines.push(output.derivatives.summary);
+      lines.push(compact(output.derivatives.summary, MAX_SUMMARY_CHARS));
     }
     lines.push('');
 
@@ -115,13 +317,18 @@ export class OverviewFormatter {
         ? `Downside vulnerability: ${output.liquidity.downsideVulnerability}`
         : undefined,
     ].filter((line): line is string => line !== undefined);
+    let liquidityLineCount = 0;
     for (const b of structuredLiquidity) {
-      lines.push(`* ${b}`);
+      if (liquidityLineCount >= MAX_LIQUIDITY_LINES) break;
+      lines.push(`* ${compact(b, MAX_DETAIL_CHARS)}`);
+      liquidityLineCount++;
     }
     const structuredText = new Set(structuredLiquidity.map((line) => line.toLowerCase()));
     for (const b of output.liquidity.bullets) {
+      if (liquidityLineCount >= MAX_LIQUIDITY_LINES) break;
       if (structuredText.has(b.toLowerCase())) continue;
-      lines.push(`* ${b}`);
+      lines.push(`* ${compact(b, MAX_DETAIL_CHARS)}`);
+      liquidityLineCount++;
     }
     lines.push('');
 
@@ -129,27 +336,194 @@ export class OverviewFormatter {
     if (output.events.upcoming.length > 0 || output.events.summary.trim() !== '') {
       lines.push('📅 Events');
       if (output.events.summary.trim() !== '') {
-        lines.push(output.events.summary);
+        lines.push(compact(output.events.summary, MAX_SUMMARY_CHARS));
       }
-      for (const ev of output.events.upcoming) {
+      for (const ev of output.events.upcoming.slice(0, MAX_EVENTS)) {
         const sym = IMPORTANCE_SYMBOL[ev.importance] ?? '⚪';
-        lines.push(`${sym} ${ev.title}  |  ${ev.time}`);
+        lines.push(`${sym} ${compact(ev.title, 120)}  |  ${compact(ev.time, 60)}`);
       }
       lines.push('');
     }
 
     // Scenarios (always present)
     lines.push('⚡ Scenarios');
-    lines.push(`▶ Reclaim: ${output.scenarios.reclaim}`);
-    lines.push(`▶ Rejection: ${output.scenarios.rejection}`);
-    lines.push(`▶ Chop: ${output.scenarios.chop}`);
+    lines.push(`▶ Reclaim: ${compact(output.scenarios.reclaim, MAX_DETAIL_CHARS)}`);
+    lines.push(`▶ Rejection: ${compact(output.scenarios.rejection, MAX_DETAIL_CHARS)}`);
+    lines.push(`▶ Chop: ${compact(output.scenarios.chop, MAX_DETAIL_CHARS)}`);
     lines.push('');
 
     // Footer
     lines.push('─────────────────────');
     lines.push(output.note);
 
-    return lines.join('\n');
+    return capReportLength(lines.join('\n'));
+  }
+
+  formatCompact(output: OverviewOutput): string {
+    const label = SESSION_LABEL[output.session];
+    const regimeDisplay = output.marketRegime.replace(/_/g, ' ');
+    const rotationDisplay = output.alts.rotationState.replace(/_/g, ' ');
+    const btcLevels = formatLevels(output.btc.keyLevels, 90);
+    const ethLevels = formatLevels(output.eth.keyLevels, 70);
+    const highImpactEvents = output.events.upcoming.filter((ev) =>
+      ev.importance === 'critical' || ev.importance === 'high'
+    );
+
+    const lines: string[] = [
+      `Crypto ${label} Brief · ${toUtcDatetime(output.generatedAtUtc)} UTC / ${toFrankfurtHHmm(output.generatedAtUtc)} FFM`,
+      `Regime: ${regimeDisplay} · Confidence: ${output.briefConfidence}`,
+      '',
+      '📌 Changed',
+    ];
+
+    for (const bullet of output.whatChanged.slice(0, 3)) {
+      lines.push(`• ${compact(bullet, COMPACT_DETAIL_CHARS)}`);
+    }
+
+    lines.push('');
+    lines.push(`₿ BTC: ${output.btc.structure} · ${compact(output.btc.position, COMPACT_DETAIL_CHARS)}`);
+    pushIfNonEmpty(lines, compact(output.btc.summary, COMPACT_SUMMARY_CHARS));
+    if (btcLevels !== undefined) lines.push(`Levels: ${btcLevels}`);
+
+    lines.push('');
+    lines.push(`Ξ ETH: ${compact(output.eth.vsbtc, COMPACT_DETAIL_CHARS)}`);
+    if (ethLevels !== undefined) lines.push(`Levels: ${ethLevels}`);
+
+    lines.push('');
+    lines.push(`🌊 Alts: ${rotationDisplay} · ${compact(output.alts.breadth, COMPACT_DETAIL_CHARS)}`);
+
+    lines.push('');
+    lines.push(
+      `📊 Derivs: funding ${compact(output.derivatives.funding, 70)} · OI ${compact(output.derivatives.oi, 70)} · ${compact(output.derivatives.positioning, 70)}`,
+    );
+
+    const liquidityLines = compactLiquidityLines(output);
+    if (liquidityLines.length > 0) {
+      lines.push('');
+      lines.push('Liquidity:');
+      for (const line of liquidityLines) lines.push(`* ${line}`);
+    }
+
+    lines.push('');
+    if (highImpactEvents.length > 0) {
+      lines.push('📅 Events:');
+      for (const ev of highImpactEvents.slice(0, 3)) {
+        const sym = IMPORTANCE_SYMBOL[ev.importance] ?? '⚪';
+        lines.push(`${sym} ${compact(ev.title, 90)} · ${compact(ev.time, 45)}`);
+      }
+    } else if (output.events.upcoming.length > 0 || output.events.summary.trim() !== '') {
+      lines.push('📅 Events: none high-impact');
+    }
+
+    lines.push('');
+    lines.push('⚡ Scenarios:');
+    lines.push(`Reclaim: ${compact(output.scenarios.reclaim, COMPACT_DETAIL_CHARS)}`);
+    lines.push(`Reject: ${compact(output.scenarios.rejection, COMPACT_DETAIL_CHARS)}`);
+    lines.push(`Chop: ${compact(output.scenarios.chop, COMPACT_DETAIL_CHARS)}`);
+    lines.push('');
+    lines.push(COMPACT_FOOTER_NOTE);
+
+    return capReportLength(lines.join('\n'), COMPACT_MESSAGE_LIMIT);
+  }
+
+  formatTelegramHtmlCompact(output: OverviewOutput): string {
+    const label = SESSION_LABEL[output.session];
+    const regimeDisplay = formatRegimeForTelegram(output);
+    const regimeMarker = marketMarker(output.marketRegime);
+    const btcMarker = marketMarker(output.btc.structure);
+    const ethMarker = marketMarker(output.eth.vsbtc);
+    const altsMarker = marketMarker(`${output.alts.rotationState} ${output.alts.breadth}`);
+    const derivativesMarker = marketMarker(output.derivatives.positioning);
+    const rotationDisplay = output.alts.rotationState.replace(/_/g, ' ');
+    const btcLevels = formatHtmlLevels(output.btc.keyLevels, 2);
+    const ethLevels = formatHtmlLevels(output.eth.keyLevels, 2);
+    const highImpactEvents = output.events.upcoming.filter((ev) =>
+      ev.importance === 'critical' || ev.importance === 'high'
+    );
+    const eventLines = highImpactEvents.length > 0
+      ? highImpactEvents.slice(0, 3).map((ev) =>
+          `${eventMarker(ev.importance)} ${escapeHtml(compactComplete(ev.title, 80))} · ${code(compactComplete(ev.time, 42))}`
+        )
+      : output.events.upcoming.length > 0 || output.events.summary.trim() !== ''
+        ? ['🔵 No high-impact BTC/ETH event confirmed']
+        : ['⚪ No event source update'];
+
+    const sourceParts = [
+      `${dataStatusMarker(output.dataStatus.price)} Price`,
+      `${dataStatusMarker(output.dataStatus.derivatives)} Derivs`,
+      `${dataStatusMarker(output.dataStatus.events)} Events`,
+      `${dataStatusMarker(output.dataStatus.liquidations)} Liq clusters`,
+      `${isInitialRead(output) ? '⚪ Initial read' : '✅ Previous brief'}`,
+    ];
+
+    const changed = output.whatChanged.slice(0, 2).map((bullet) =>
+      `${isInitialRead(output) ? '⚪' : '✅'} ${escapeHtml(compactComplete(bullet, 95))}`
+    );
+    const btcBullets = [
+      `• ${escapeHtml(compactComplete(output.btc.position, 80))}`,
+      `• ${escapeHtml(compactComplete(output.btc.summary, 90))}`,
+      ...btcLevels.map((level, index) => `• ${index === 0 ? 'Recovery/ref' : 'Resistance/ref'}: ${level}`),
+    ].filter((line) => line.trim() !== '•').slice(0, 4);
+    const ethBullets = [
+      `• ${escapeHtml(compactComplete(output.eth.vsbtc, 90))}`,
+      ...ethLevels.map((level) => `• Ref: ${level}`),
+      `• ${escapeHtml(compactComplete(output.eth.summary, 80))}`,
+    ].filter((line) => line.trim() !== '•').slice(0, 3);
+    const altsBullets = [
+      `Breadth: ${compactComplete(output.alts.breadth, 80)}`,
+      `Rotation: ${rotationDisplay}`,
+    ];
+    const derivativesBullets = [
+      `Funding: ${compactComplete(output.derivatives.funding, 60)}`,
+      `OI: ${compactComplete(output.derivatives.oi, 60)}`,
+      `Positioning: ${compactComplete(output.derivatives.positioning, 60)}`,
+    ];
+    const liquidityLines = compactHtmlLiquidityLines(output);
+
+    const lines: string[] = [
+      `${b(`Crypto ${label} Brief`)} · ${escapeHtml(toUtcDatetime(output.generatedAtUtc))} UTC / ${escapeHtml(toFrankfurtHHmm(output.generatedAtUtc))} FFM`,
+      '',
+      `${b('Regime:')} ${regimeMarker} ${escapeHtml(regimeDisplay)}`,
+      `${b('Confidence:')} ${confidenceMarker(output.briefConfidence)} ${escapeHtml(output.briefConfidence)}`,
+      `${b('Sources:')} ${sourceParts.map(escapeHtml).join(' · ')}`,
+      '',
+      b('📌 Changed'),
+      ...(changed.length > 0 ? changed : ['⚪ Initial session read']),
+      '',
+      `${b(`₿ BTC · ${btcMarker} ${output.btc.structure}`)}`,
+      ...btcBullets,
+      '',
+      `${b(`Ξ ETH · ${ethMarker} relative strength`)}`,
+      ...ethBullets,
+      '',
+      `${b(`🌊 Alts · ${altsMarker} ${rotationDisplay}`)}`,
+      ...altsBullets.map((line) => `• ${escapeHtml(line)}`),
+      '',
+      `${b(`📊 Derivs · ${derivativesMarker} ${output.derivatives.positioning.toLowerCase().includes('neutral') || output.derivatives.positioning.toLowerCase().includes('balanced') ? 'neutral' : 'positioning'}`)}`,
+      ...derivativesBullets.map((line) => `• ${escapeHtml(line)}`),
+    ];
+
+    if (liquidityLines.length > 0) {
+      lines.push('', b('💧 Levels'));
+      for (const line of liquidityLines) {
+        lines.push(`• ${escapeHtml(line.label)}: ${code(compactComplete(line.value, 70))}`);
+      }
+    }
+
+    lines.push(
+      '',
+      b('📅 Events'),
+      ...eventLines,
+      '',
+      b('⚡ Scenarios'),
+      `Reclaim: ${escapeHtml(compactComplete(output.scenarios.reclaim, 95))}`,
+      `Reject: ${escapeHtml(compactComplete(output.scenarios.rejection, 95))}`,
+      `Chop: ${escapeHtml(compactComplete(output.scenarios.chop, 95))}`,
+      '',
+      escapeHtml(COMPACT_FOOTER_NOTE),
+    );
+
+    return capHtmlReportLength(lines.join('\n'), HTML_COMPACT_MESSAGE_LIMIT);
   }
 
   splitForTelegram(report: string, maxLength = 4096): string[] {
@@ -186,8 +560,9 @@ export class OverviewFormatter {
       }
 
       pushCurrent();
-      for (let i = 0; i < line.length; i += maxLength) {
-        chunks.push(line.slice(i, i + maxLength));
+      const plainLine = escapeHtml(stripHtmlTags(line));
+      for (let i = 0; i < plainLine.length; i += maxLength) {
+        chunks.push(plainLine.slice(i, i + maxLength));
       }
     }
     pushCurrent();

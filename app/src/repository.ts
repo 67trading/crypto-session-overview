@@ -112,6 +112,13 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
     });
   }
 
+  async updateOverviewStatus(id: string, status: OverviewRecord['status']): Promise<void> {
+    await this.prisma.sessionOverview.update({
+      where: { id },
+      data: { status },
+    });
+  }
+
   async getLatestOverview(session: CryptoSession): Promise<OverviewRecord | null> {
     const row = await this.prisma.sessionOverview.findFirst({
       where: { session },

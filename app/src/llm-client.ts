@@ -127,12 +127,21 @@ type GeminiModelsApi = {
       temperature: number;
       maxOutputTokens: number;
       responseMimeType: string;
+      thinkingConfig?: {
+        thinkingBudget?: number;
+      };
     };
   }): Promise<{
     text?: string;
+    candidates?: {
+      finishReason?: string;
+      finishMessage?: string;
+      tokenCount?: number;
+    }[];
     usageMetadata?: {
       promptTokenCount?: number;
       candidatesTokenCount?: number;
+      thoughtsTokenCount?: number;
       totalTokenCount?: number;
     };
   }>;
@@ -166,6 +175,7 @@ export class GeminiLlmClient implements LlmOverviewClient {
             temperature: 0.2,
             maxOutputTokens: MAX_OUTPUT_TOKENS,
             responseMimeType: 'application/json',
+            thinkingConfig: { thinkingBudget: 0 },
           },
         });
 
@@ -180,7 +190,7 @@ export class GeminiLlmClient implements LlmOverviewClient {
         try {
           parsed = JSON.parse(text);
         } catch {
-          throw new Error(`Failed to parse LLM response as JSON: ${text.slice(0, 200)}`);
+          throw new Error(`Failed to parse LLM response as JSON (${formatResponseDiagnostics(response, text)}): ${text.slice(0, 200)}`);
         }
 
         const result = OverviewOutputSchema.safeParse(parsed);
@@ -210,6 +220,20 @@ export class GeminiLlmClient implements LlmOverviewClient {
 
     throw lastError ?? new Error('LLM generation failed after retries');
   }
+}
+
+function formatResponseDiagnostics(response: Awaited<ReturnType<GeminiModelsApi['generateContent']>>, text: string): string {
+  const candidate = response.candidates?.[0];
+  const usage = response.usageMetadata;
+  return [
+    `textLength=${text.length}`,
+    `finishReason=${candidate?.finishReason ?? 'unknown'}`,
+    ...(candidate?.finishMessage !== undefined ? [`finishMessage=${candidate.finishMessage}`] : []),
+    `candidateTokenCount=${candidate?.tokenCount ?? usage?.candidatesTokenCount ?? 'unknown'}`,
+    `promptTokenCount=${usage?.promptTokenCount ?? 'unknown'}`,
+    `thoughtsTokenCount=${usage?.thoughtsTokenCount ?? 'unknown'}`,
+    `totalTokenCount=${usage?.totalTokenCount ?? 'unknown'}`,
+  ].join(', ');
 }
 
 function buildGeminiContents(input: OverviewInput): string {

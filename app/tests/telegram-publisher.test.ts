@@ -6,7 +6,7 @@ afterEach(() => {
 });
 
 describe('TelegramPublisher', () => {
-  it('sends briefs as plain text to avoid Telegram Markdown parse failures', async () => {
+  it('sends briefs with Telegram HTML parse mode and web previews disabled', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({ ok: true, result: { message_id: 123 } }),
@@ -21,6 +21,8 @@ describe('TelegramPublisher', () => {
     expect(JSON.parse(init.body)).toEqual({
       chat_id: '-100123',
       text: 'BTC_USDT * context',
+      parse_mode: 'HTML',
+      disable_web_page_preview: true,
     });
   });
 });

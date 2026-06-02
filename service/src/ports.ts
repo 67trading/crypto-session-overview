@@ -325,7 +325,7 @@ export type CollectorRunRecord = {
 export type OverviewRecord = {
   id?: string;
   session: CryptoSession;
-  status: 'SUCCESS' | 'FAILED' | 'PARTIAL';
+  status: 'SUCCESS' | 'FAILED' | 'PARTIAL' | 'PUBLISHED_DEGRADED';
   outputJson: OverviewOutput;
   humanReport?: string;
   inputSnapshotId?: string;
@@ -402,6 +402,7 @@ export interface SessionOverviewRepository {
   saveCollectorRun(run: CollectorRunRecord): Promise<void>;
   saveOverview(record: OverviewRecord): Promise<string>;
   updateOverviewTelegramPosts(id: string, postIds: string[]): Promise<void>;
+  updateOverviewStatus(id: string, status: OverviewRecord['status']): Promise<void>;
   getLatestOverview(session: CryptoSession): Promise<OverviewRecord | null>;
   getOverviewByRunKey(runKey: string): Promise<OverviewRecord | null>;
   listOverviews(filters: OverviewFilters): Promise<OverviewRecord[]>;

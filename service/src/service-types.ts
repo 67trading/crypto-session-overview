@@ -48,7 +48,7 @@ export type OverviewRunOptions = {
 export type OverviewRunResult = {
   overviewId: string;
   session: CryptoSession;
-  status: 'SUCCESS' | 'FAILED' | 'PARTIAL';
+  status: 'SUCCESS' | 'FAILED' | 'PARTIAL' | 'PUBLISHED_DEGRADED';
   output?: OverviewOutput;
   humanReport?: string;
   telegramPostIds?: string[];
