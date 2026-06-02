@@ -325,7 +325,7 @@ export type CollectorRunRecord = {
 export type OverviewRecord = {
   id?: string;
   session: CryptoSession;
-  status: 'SUCCESS' | 'FAILED' | 'PARTIAL';
+  status: 'SUCCESS' | 'FAILED' | 'PARTIAL' | 'PUBLISHED_DEGRADED';
   outputJson: OverviewOutput;
   humanReport?: string;
   inputSnapshotId?: string;

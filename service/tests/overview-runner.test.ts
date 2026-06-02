@@ -302,7 +302,7 @@ describe('OverviewRunner.run()', () => {
     const result = await runner.run(RUN_OPTIONS);
 
     expect(result.output?.note).toBe(PRODUCT_FOOTER_NOTE);
-    expect(result.humanReport).toContain(PRODUCT_FOOTER_NOTE);
+    expect(result.humanReport).toContain('Context only. No entries/exits/sizing/leverage.');
   });
 
   it('computes whatChanged via brief diff when a previous SUCCESS brief exists', async () => {
@@ -328,6 +328,50 @@ describe('OverviewRunner.run()', () => {
     expect(result.status).toBe('SUCCESS');
     // whatChanged is computed — at minimum 1 bullet
     expect(result.output?.whatChanged.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('sends a bounded previous brief context to the LLM input', async () => {
+    const longText = 'Verbose previous session context with repeated details. '.repeat(20);
+    const prevOutput = makeValidOutput();
+    prevOutput.btc.summary = longText;
+    prevOutput.btc.position = longText;
+    prevOutput.eth.vsbtc = longText;
+    prevOutput.alts.breadth = longText;
+    prevOutput.derivatives.funding = longText;
+    prevOutput.derivatives.oi = longText;
+    prevOutput.derivatives.positioning = longText;
+    prevOutput.events.upcoming = Array.from({ length: 10 }, (_, i) => ({
+      title: `${i + 1}. ${longText}`,
+      time: '12:00 UTC',
+      importance: 'high' as const,
+    }));
+    const repo = makeRepo();
+    repo.listOverviews.mockResolvedValue([
+      {
+        id: 'failed-id',
+        session: 'US_CRYPTO',
+        status: 'FAILED',
+        outputJson: makeValidOutput(),
+      },
+      {
+        id: 'prev-id',
+        session: 'US_CRYPTO',
+        status: 'SUCCESS',
+        outputJson: prevOutput,
+      },
+    ]);
+    const runner = new OverviewRunner(makeDeps({ repository: repo }));
+
+    await runner.run(RUN_OPTIONS);
+
+    const savedInput = repo.saveInputSnapshot.mock.calls[0]?.[1];
+    expect(savedInput.previousBrief).toEqual(expect.objectContaining({
+      btcSummary: expect.stringMatching(/\.\.\.$/),
+      btcPosition: expect.stringMatching(/\.\.\.$/),
+      ethVsbtc: expect.stringMatching(/\.\.\.$/),
+    }));
+    expect(savedInput.previousBrief?.btcSummary.length).toBeLessThanOrEqual(160);
+    expect(savedInput.previousBrief?.upcomingEventTitles).toHaveLength(5);
   });
 
   it('continues and returns SUCCESS when an event collector fails', async () => {
@@ -417,18 +461,39 @@ describe('OverviewRunner.run()', () => {
     expect(publisher.publish).not.toHaveBeenCalled();
   });
 
-  it('returns FAILED when LLM client throws', async () => {
+  it('returns PUBLISHED_DEGRADED with deterministic fallback when LLM client throws', async () => {
+    const repo = makeRepo();
+    const publisher = {
+      chatId: 'chat-real',
+      publish: vi.fn().mockResolvedValue(['msg-degraded']),
+    };
     const deps = makeDeps({
+      repository: repo,
+      publisher,
       llmClient: {
         modelName: 'test-model',
-        generateOverview: vi.fn().mockRejectedValue(new Error('API quota exceeded')),
+        generateOverview: vi.fn().mockRejectedValue(new Error('429 RESOURCE_EXHAUSTED daily quota exceeded')),
       },
     });
     const runner = new OverviewRunner(deps);
-    const result = await runner.run(RUN_OPTIONS);
+    const result = await runner.run({ ...RUN_OPTIONS, publish: true });
 
-    expect(result.status).toBe('FAILED');
-    expect(result.error).toContain('API quota exceeded');
+    expect(result.status).toBe('PUBLISHED_DEGRADED');
+    expect(result.telegramPublished).toBe(true);
+    expect(result.telegramPostIds).toEqual(['msg-degraded']);
+    expect(result.output).toEqual(expect.objectContaining({
+      generationMode: 'TEMPLATE_FALLBACK',
+      llmErrorKind: 'DAILY_QUOTA_EXHAUSTED',
+      outputSource: 'deterministic_fallback',
+    }));
+    expect(repo.saveOverview).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'PUBLISHED_DEGRADED',
+      outputJson: expect.objectContaining({
+        generationMode: 'TEMPLATE_FALLBACK',
+        llmErrorKind: 'DAILY_QUOTA_EXHAUSTED',
+      }),
+    }));
+    expect(publisher.publish).toHaveBeenCalledWith(expect.stringContaining('<b>Crypto US Brief</b>'), 'US_CRYPTO');
   });
 
   it('publishes to Telegram and saves post records when publish=true', async () => {
@@ -444,8 +509,17 @@ describe('OverviewRunner.run()', () => {
     expect(result.status).toBe('SUCCESS');
     expect(result.telegramPublished).toBe(true);
     expect(publisher.publish).toHaveBeenCalled();
+    const [telegramText] = publisher.publish.mock.calls[0] as [string];
+    expect(telegramText).toContain('<b>Crypto US Brief</b>');
+    expect(telegramText).toContain('<code>');
+    expect(result.humanReport).toContain('Crypto US Brief ·');
+    expect(result.humanReport).not.toContain('<b>');
     expect(repo.saveTelegramPost).toHaveBeenCalled();
-    expect(repo.saveTelegramPost).toHaveBeenCalledWith(expect.objectContaining({ status: 'SENT', chatId: 'chat-real' }));
+    expect(repo.saveTelegramPost).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'SENT',
+      chatId: 'chat-real',
+      text: expect.stringContaining('<b>Crypto US Brief</b>'),
+    }));
     expect(repo.updateOverviewTelegramPosts).toHaveBeenCalled();
   });
 
@@ -470,13 +544,11 @@ describe('OverviewRunner.run()', () => {
     }));
   });
 
-  it('persists successful Telegram IDs when a later chunk fails', async () => {
+  it('compacts verbose reports into a single Telegram message', async () => {
     const longOutput = makeValidOutput();
     longOutput.btc.summary = 'BTC '.repeat(1500);
     const publisher = {
-      publish: vi.fn()
-        .mockResolvedValueOnce(['msg-1'])
-        .mockRejectedValueOnce(new Error('Telegram chunk 2 failed')),
+      publish: vi.fn().mockResolvedValue(['msg-1']),
     };
     const repo = makeRepo();
     const deps = makeDeps({
@@ -492,17 +564,13 @@ describe('OverviewRunner.run()', () => {
 
     expect(result.telegramPublished).toBe(true);
     expect(result.telegramPostIds).toEqual(['msg-1']);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
     for (const call of publisher.publish.mock.calls) {
       const [chunk] = call as [string];
       expect(chunk.length).toBeLessThanOrEqual(4096);
     }
     expect(repo.updateOverviewTelegramPosts).toHaveBeenCalledWith('overview-id-1', ['msg-1']);
-    expect(repo.saveTelegramPost).toHaveBeenCalledWith(expect.objectContaining({
-      messageIndex: 1,
-      text: expect.any(String),
-      status: 'FAILED',
-      errorMessage: 'Telegram chunk 2 failed',
-    }));
+    expect(repo.saveTelegramPost).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'FAILED' }));
   });
 
   it('logs invariant violations as warnings without failing the run', async () => {

@@ -21,6 +21,8 @@ export class TelegramPublisher implements OverviewPublisher {
       body: JSON.stringify({
         chat_id: this.chatId,
         text: report,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
       }),
     });
 

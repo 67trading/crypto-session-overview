@@ -11,6 +11,7 @@ import type {
   DerivativesContext,
   OverviewOutput,
   OverviewRecord,
+  OverviewInput,
 } from './ports.js';
 import { OverviewInputBuilder } from './overview-input-builder.js';
 import { OverviewFormatter } from './overview-formatter.js';
@@ -34,6 +35,16 @@ import {
 } from '../../core/src/index.js';
 
 const DEFAULT_TOKEN_BUDGET = 2000;
+const PREVIOUS_BRIEF_TEXT_LIMIT = 160;
+const PREVIOUS_BRIEF_MAX_EVENTS = 5;
+
+type LlmErrorKind = 'DAILY_QUOTA_EXHAUSTED' | 'RATE_LIMITED' | 'MAX_TOKENS' | 'INVALID_JSON' | 'SCHEMA_VALIDATION' | 'NO_TEXT' | 'UNKNOWN';
+type GenerationMode = 'LLM_JSON' | 'TEMPLATE_FALLBACK';
+type OverviewOutputWithGenerationMeta = OverviewOutput & {
+  generationMode?: GenerationMode;
+  llmErrorKind?: LlmErrorKind;
+  outputSource?: 'llm_json' | 'deterministic_fallback';
+};
 
 function isOverviewOutput(value: unknown): value is OverviewOutput {
   return typeof value === 'object'
@@ -92,6 +103,192 @@ function existingOverviewResult(
   };
 }
 
+function compactPreviousBriefText(text: string, maxChars = PREVIOUS_BRIEF_TEXT_LIMIT): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
+}
+
+function buildPreviousBriefContext(previousOutput: OverviewOutput): PreviousBriefContext {
+  return {
+    generatedAtUtc: previousOutput.generatedAtUtc,
+    marketRegime: previousOutput.marketRegime,
+    briefConfidence: previousOutput.briefConfidence,
+    btcStructure: previousOutput.btc.structure,
+    btcPosition: compactPreviousBriefText(previousOutput.btc.position),
+    btcSummary: compactPreviousBriefText(previousOutput.btc.summary),
+    ethVsbtc: compactPreviousBriefText(previousOutput.eth.vsbtc),
+    altRotationState: previousOutput.alts.rotationState,
+    altBreadth: compactPreviousBriefText(previousOutput.alts.breadth),
+    derivativesFunding: compactPreviousBriefText(previousOutput.derivatives.funding),
+    derivativesOi: compactPreviousBriefText(previousOutput.derivatives.oi),
+    derivativesPositioning: compactPreviousBriefText(previousOutput.derivatives.positioning),
+    upcomingEventTitles: previousOutput.events.upcoming
+      .slice(0, PREVIOUS_BRIEF_MAX_EVENTS)
+      .map((e: { title: string }) => compactPreviousBriefText(e.title, 120)),
+  };
+}
+
+function classifyLlmError(error: unknown): LlmErrorKind {
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+
+  if (message.includes('429') && message.includes('RESOURCE_EXHAUSTED') && lower.includes('daily')) {
+    return 'DAILY_QUOTA_EXHAUSTED';
+  }
+  if (message.includes('429') || message.includes('RESOURCE_EXHAUSTED')) return 'RATE_LIMITED';
+  if (message.includes('MAX_TOKENS')) return 'MAX_TOKENS';
+  if (lower.includes('failed to parse llm response as json')) return 'INVALID_JSON';
+  if (lower.includes('schema validation')) return 'SCHEMA_VALIDATION';
+  if (lower.includes('no text content')) return 'NO_TEXT';
+  return 'UNKNOWN';
+}
+
+function formatLevel(value: number | undefined, label: string): string | undefined {
+  if (value === undefined || !Number.isFinite(value)) return undefined;
+  return `${Number(value.toFixed(2))} (${label})`;
+}
+
+function fallbackKeyLevels(levels: OverviewInput['levels'][string] | undefined): string[] {
+  if (levels === undefined) return [];
+  return [
+    formatLevel(levels.daily?.currentDayOpen, 'current day open'),
+    formatLevel(levels.daily?.dailyMidpoint, 'daily midpoint'),
+    formatLevel(levels.weekly?.weeklyMidpoint, 'weekly midpoint'),
+    formatLevel(levels.fourHour?.resistanceZone.high, '4H resistance high'),
+    formatLevel(levels.fourHour?.supportZone.low, '4H support low'),
+  ].filter((level): level is string => level !== undefined).slice(0, 4);
+}
+
+function fallbackPosition(levels: OverviewInput['levels'][string] | undefined): string {
+  const parts = [
+    levels?.daily?.dailyPosition?.replace(/_/g, ' '),
+    levels?.weekly?.weeklyPosition?.replace(/_/g, ' '),
+  ].filter((part): part is string => part !== undefined);
+  return parts.length > 0 ? parts.join(', ') : 'deterministic position unavailable';
+}
+
+function fallbackStructure(levels: OverviewInput['levels'][string] | undefined): OverviewOutput['btc']['structure'] {
+  return levels?.fourHour?.structure ?? 'unknown';
+}
+
+function buildDeterministicFallbackOverview(params: {
+  session: OverviewRunOptions['session'];
+  input: OverviewInput;
+  precomputedRegime: { marketRegime: OverviewOutput['marketRegime']; briefConfidence: OverviewOutput['briefConfidence'] };
+  dataStatus: OverviewOutput['dataStatus'];
+  altsBreadth: { rotationState: OverviewOutput['alts']['rotationState']; breadthLabel: string; totalTracked: number };
+  derivativesNarrative: Pick<OverviewOutput['derivatives'], 'funding' | 'oi' | 'positioning'>;
+  crossMarket: { ethBtcTrendLabel: string };
+  previousOutput: OverviewOutput | null;
+  llmErrorKind: LlmErrorKind;
+}): OverviewOutputWithGenerationMeta {
+  const btcLevels = params.input.levels['BTCUSDT'];
+  const ethLevels = params.input.levels['ETHUSDT'];
+  const liquidity = params.input.liquidityContext;
+  const upcoming = params.input.precomputedEvents?.upcomingEvents ?? [];
+  const llmNote = params.llmErrorKind === 'DAILY_QUOTA_EXHAUSTED'
+    ? 'LLM quota exhausted; deterministic fallback brief generated from collected market context.'
+    : `LLM unavailable (${params.llmErrorKind}); deterministic fallback brief generated from collected market context.`;
+
+  return {
+    briefId: `fallback-${params.session}-${Date.now()}`,
+    generatedAtUtc: params.input.request.createdAt,
+    session: params.session,
+    marketRegime: params.precomputedRegime.marketRegime,
+    briefConfidence: params.precomputedRegime.briefConfidence,
+    dataStatus: params.dataStatus,
+    whatChanged: params.previousOutput !== null ? computeWhatChanged(params.previousOutput, {
+      briefId: 'fallback-current',
+      generatedAtUtc: params.input.request.createdAt,
+      session: params.session,
+      marketRegime: params.precomputedRegime.marketRegime,
+      briefConfidence: params.precomputedRegime.briefConfidence,
+      dataStatus: params.dataStatus,
+      whatChanged: [],
+      btc: {
+        summary: 'Deterministic fallback read generated from collected price structure.',
+        keyLevels: fallbackKeyLevels(btcLevels),
+        position: fallbackPosition(btcLevels),
+        structure: fallbackStructure(btcLevels),
+      },
+      eth: {
+        summary: 'Deterministic ETH read generated from cross-market context.',
+        vsbtc: params.crossMarket.ethBtcTrendLabel,
+        keyLevels: fallbackKeyLevels(ethLevels),
+      },
+      majorAssets: [],
+      alts: {
+        summary: params.altsBreadth.totalTracked > 0 ? `Tracked alt breadth: ${params.altsBreadth.breadthLabel}.` : 'Alt breadth data unavailable.',
+        rotationState: params.altsBreadth.rotationState,
+        breadth: params.altsBreadth.totalTracked > 0 ? params.altsBreadth.breadthLabel : 'data unavailable',
+      },
+      derivatives: {
+        summary: 'Deterministic derivatives summary from funding, OI, and positioning collectors.',
+        funding: params.derivativesNarrative.funding,
+        oi: params.derivativesNarrative.oi,
+        positioning: params.derivativesNarrative.positioning,
+      },
+      liquidity: {
+        bullets: liquidity?.clusters !== undefined && liquidity.clusters.length > 0
+          ? liquidity.clusters.slice(0, 3).map((cluster) => `${cluster.side} liquidation cluster near ${Number(cluster.price.toFixed(2))}.`)
+          : ['No confirmed liquidation cluster data available.'],
+      },
+      events: {
+        summary: upcoming.length > 0 ? 'Deterministic upcoming event list from collected sources.' : 'No high-impact events confirmed from collected sources.',
+        upcoming,
+      },
+      scenarios: {
+        reclaim: 'If price reclaims the nearest recovery area, the immediate defensive read weakens.',
+        rejection: 'If price rejects at nearby resistance, the session remains defensive.',
+        chop: 'If price remains between nearby support and recovery levels, expect compression rather than clean continuation.',
+      },
+      note: PRODUCT_FOOTER_NOTE,
+    }).slice(0, 3) : firstBriefBullets(),
+    btc: {
+      summary: `${llmNote} BTC read is based on deterministic HTF levels and current structure.`,
+      keyLevels: fallbackKeyLevels(btcLevels),
+      position: fallbackPosition(btcLevels),
+      structure: fallbackStructure(btcLevels),
+    },
+    eth: {
+      summary: 'ETH section is generated from deterministic ETH/BTC and HTF level context.',
+      vsbtc: params.crossMarket.ethBtcTrendLabel,
+      keyLevels: fallbackKeyLevels(ethLevels),
+    },
+    majorAssets: [],
+    alts: {
+      summary: params.altsBreadth.totalTracked > 0 ? `Tracked alt breadth: ${params.altsBreadth.breadthLabel}.` : 'Alt breadth data unavailable.',
+      rotationState: params.altsBreadth.rotationState,
+      breadth: params.altsBreadth.totalTracked > 0 ? params.altsBreadth.breadthLabel : 'data unavailable',
+    },
+    derivatives: {
+      summary: 'Deterministic derivatives summary from funding, OI, and positioning collectors.',
+      funding: params.derivativesNarrative.funding,
+      oi: params.derivativesNarrative.oi,
+      positioning: params.derivativesNarrative.positioning,
+    },
+    liquidity: {
+      bullets: liquidity?.clusters !== undefined && liquidity.clusters.length > 0
+        ? liquidity.clusters.slice(0, 3).map((cluster) => `${cluster.side} liquidation cluster near ${Number(cluster.price.toFixed(2))}.`)
+        : ['No confirmed liquidation cluster data available.'],
+    },
+    events: {
+      summary: upcoming.length > 0 ? 'Deterministic upcoming event list from collected sources.' : 'No high-impact events confirmed from collected sources.',
+      upcoming,
+    },
+    scenarios: {
+      reclaim: 'If price reclaims the nearest recovery area, the immediate defensive read weakens.',
+      rejection: 'If price rejects at nearby resistance, the session remains defensive.',
+      chop: 'If price remains between nearby support and recovery levels, expect compression rather than clean continuation.',
+    },
+    note: PRODUCT_FOOTER_NOTE,
+    generationMode: 'TEMPLATE_FALLBACK',
+    llmErrorKind: params.llmErrorKind,
+    outputSource: 'deterministic_fallback',
+  };
+}
+
 export class OverviewRunner {
   private readonly inputBuilder = new OverviewInputBuilder();
   private readonly formatter = new OverviewFormatter();
@@ -108,12 +305,15 @@ export class OverviewRunner {
     const sessionWindowEnd = new Date(sessionBoundary.endMs);
     const baseRunKey = `${session}:${sessionWindowStart.toISOString()}`;
     let runKey = options.force === true ? `${baseRunKey}:manual:${startedAt}` : baseRunKey;
+    let savedInputSnapshotId: string | undefined;
 
     logger.info({ session }, 'Starting session overview run');
 
     try {
       // 0. Load previous successful brief for diff context
-      const previousRecord = await repository.getLatestOverview(session);
+      const recentRecords = await repository.listOverviews({ session, limit: 10 }).catch(() => []);
+      const previousRecord = recentRecords.find((record) => record.status === 'SUCCESS')
+        ?? await repository.getLatestOverview(session);
       const previousOutput = previousRecord?.status === 'SUCCESS' ? previousRecord.outputJson : null;
 
       if (options.force !== true) {
@@ -341,21 +541,7 @@ export class OverviewRunner {
       });
 
       // 7. Build input
-      const previousBrief: PreviousBriefContext | undefined = previousOutput !== null ? {
-        generatedAtUtc: previousOutput.generatedAtUtc,
-        marketRegime: previousOutput.marketRegime,
-        briefConfidence: previousOutput.briefConfidence,
-        btcStructure: previousOutput.btc.structure,
-        btcPosition: previousOutput.btc.position,
-        btcSummary: previousOutput.btc.summary,
-        ethVsbtc: previousOutput.eth.vsbtc,
-        altRotationState: previousOutput.alts.rotationState,
-        altBreadth: previousOutput.alts.breadth,
-        derivativesFunding: previousOutput.derivatives.funding,
-        derivativesOi: previousOutput.derivatives.oi,
-        derivativesPositioning: previousOutput.derivatives.positioning,
-        upcomingEventTitles: previousOutput.events.upcoming.map((e: { title: string }) => e.title),
-      } : undefined;
+      const previousBrief = previousOutput !== null ? buildPreviousBriefContext(previousOutput) : undefined;
 
       // 7b. Pre-compute market regime + confidence from deterministic signals
       const btcLevels = levels['BTCUSDT'];
@@ -459,6 +645,7 @@ export class OverviewRunner {
 
       // 9. Save input snapshot
       const inputSnapshotId = await repository.saveInputSnapshot(session, augmentedInput);
+      savedInputSnapshotId = inputSnapshotId;
 
       // 10. Save event/context collector runs and events
       await Promise.all([
@@ -466,8 +653,30 @@ export class OverviewRunner {
         repository.saveCollectedEvents(allEvents),
       ]);
 
-      // 11. Generate overview
-      const llmResult = await this.deps.llmClient.generateOverview(augmentedInput);
+      // 11. Generate overview, falling back to deterministic template output when LLM is unavailable.
+      let generationMode: GenerationMode = 'LLM_JSON';
+      let llmErrorKind: LlmErrorKind | undefined;
+      let llmResult: Awaited<ReturnType<typeof this.deps.llmClient.generateOverview>>;
+      try {
+        llmResult = await this.deps.llmClient.generateOverview(augmentedInput);
+      } catch (err) {
+        llmErrorKind = classifyLlmError(err);
+        generationMode = 'TEMPLATE_FALLBACK';
+        logger.warn({ session, err, llmErrorKind }, 'LLM generation failed; using deterministic fallback overview');
+        llmResult = {
+          output: buildDeterministicFallbackOverview({
+            session,
+            input: augmentedInput,
+            precomputedRegime,
+            dataStatus,
+            altsBreadth,
+            derivativesNarrative,
+            crossMarket,
+            previousOutput,
+            llmErrorKind,
+          }),
+        };
+      }
       const output = {
         ...llmResult.output,
         marketRegime: precomputedRegime.marketRegime,
@@ -515,6 +724,9 @@ export class OverviewRunner {
           ? computeWhatChanged(previousOutput, llmResult.output)
           : firstBriefBullets(),
         note: PRODUCT_FOOTER_NOTE,
+        generationMode,
+        ...(llmErrorKind !== undefined ? { llmErrorKind } : {}),
+        outputSource: generationMode === 'LLM_JSON' ? 'llm_json' : 'deterministic_fallback',
       };
 
       // 11b. Hard invariant sweep — hard violations downgrade to PARTIAL and block publish
@@ -532,11 +744,13 @@ export class OverviewRunner {
       }
 
       // 12. Format
-      const humanReport = this.formatter.format(output);
+      const humanReport = this.formatter.formatCompact(output);
 
       // 13. Save overview
       const telegramPostIds: string[] = [];
-      const finalStatus = outputHasHardViolations || derivativesFailed ? 'PARTIAL' : 'SUCCESS';
+      const finalStatus = outputHasHardViolations || derivativesFailed
+        ? 'PARTIAL'
+        : generationMode === 'TEMPLATE_FALLBACK' ? 'PUBLISHED_DEGRADED' : 'SUCCESS';
       let overviewId: string;
       try {
         overviewId = await repository.saveOverview({
@@ -584,10 +798,11 @@ export class OverviewRunner {
 
       // 15. Publish if requested
       let telegramPublished = false;
-      if (options.publish === true && finalStatus === 'SUCCESS' && this.deps.publisher !== undefined) {
+      if (options.publish === true && (finalStatus === 'SUCCESS' || finalStatus === 'PUBLISHED_DEGRADED') && this.deps.publisher !== undefined) {
         const chatId = this.deps.publisher.chatId ?? 'configured-chat';
         try {
-          const chunks = this.formatter.splitForTelegram(humanReport);
+          const telegramReport = this.formatter.formatTelegramHtmlCompact(output);
+          const chunks = this.formatter.splitForTelegram(telegramReport);
           for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i]!;
             try {
@@ -690,6 +905,7 @@ export class OverviewRunner {
             scenarios: { reclaim: 'No data.', rejection: 'No data.', chop: 'No data.' },
             note: PRODUCT_FOOTER_NOTE,
           },
+          ...(savedInputSnapshotId !== undefined ? { inputSnapshotId: savedInputSnapshotId } : {}),
           sessionWindowStart,
           sessionWindowEnd,
           runKey,

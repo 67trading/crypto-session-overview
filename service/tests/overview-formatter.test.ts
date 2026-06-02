@@ -244,6 +244,157 @@ describe('OverviewFormatter.format()', () => {
     // Summary should not appear as a standalone line
     expect(result).not.toMatch(/\n\n\n/);
   });
+
+  it('keeps verbose generated reports within one Telegram message', () => {
+    const longText = 'This section contains a deliberately verbose market read with repeated context and qualifiers. '.repeat(12);
+    const result = formatter.format(makeOutput({
+      whatChanged: Array.from({ length: 8 }, (_, i) => `${i + 1}. ${longText}`),
+      btc: {
+        summary: longText,
+        keyLevels: Array.from({ length: 12 }, (_, i) => `${95000 + i * 250} important level with context`),
+        position: longText,
+        structure: 'bullish',
+      },
+      eth: {
+        summary: longText,
+        vsbtc: longText,
+        keyLevels: Array.from({ length: 12 }, (_, i) => `${3200 + i * 20} ETH level`),
+      },
+      alts: {
+        summary: longText,
+        rotationState: 'broad_rotation',
+        breadth: longText,
+      },
+      derivatives: {
+        summary: longText,
+        funding: longText,
+        oi: longText,
+        positioning: longText,
+      },
+      liquidity: {
+        immediateUpside: longText,
+        recoveryZone: longText,
+        largerUpsideMagnet: longText,
+        downsideVulnerability: longText,
+        bullets: Array.from({ length: 8 }, () => longText),
+      },
+      events: {
+        summary: longText,
+        upcoming: Array.from({ length: 8 }, (_, i) => ({
+          title: `${i + 1}. ${longText}`,
+          time: longText,
+          importance: 'high' as const,
+        })),
+      },
+      scenarios: {
+        reclaim: longText,
+        rejection: longText,
+        chop: longText,
+      },
+    }));
+
+    expect(result.length).toBeLessThanOrEqual(4096);
+    expect(formatter.splitForTelegram(result)).toHaveLength(1);
+  });
+});
+
+describe('OverviewFormatter.formatCompact()', () => {
+  it('renders a shorter Telegram-oriented report', () => {
+    const output = makeOutput({
+      liquidity: {
+        immediateUpside: '97.4k supply',
+        recoveryZone: '95.8k-96.2k',
+        largerUpsideMagnet: '100k options area',
+        downsideVulnerability: 'below 95.8k',
+        bullets: ['No confirmed liquidation cluster data available.'],
+      },
+      events: {
+        summary: 'FOMC and CPI are the main event risks.',
+        upcoming: [
+          { title: 'FOMC Minutes', time: '21:00 UTC', importance: 'critical' },
+          { title: 'Low-impact auction', time: '13:00 UTC', importance: 'low' },
+        ],
+      },
+    });
+
+    const full = formatter.format(output);
+    const compact = formatter.formatCompact(output);
+
+    expect(compact.length).toBeLessThan(full.length);
+    expect(compact.length).toBeLessThanOrEqual(2800);
+    expect(formatter.splitForTelegram(compact)).toHaveLength(1);
+    expect(compact).toContain('Regime: constructive but extended · Confidence: medium');
+    expect(compact).toContain('₿ BTC: bullish');
+    expect(compact).toContain('📊 Derivs:');
+    expect(compact).toContain('* Upside: 97.4k supply');
+    expect(compact).toContain('🔴 FOMC Minutes · 21:00 UTC');
+    expect(compact).not.toContain('Low-impact auction');
+    expect(compact).toContain('Context only. No entries/exits/sizing/leverage.');
+  });
+
+  it('uses a compact low-impact event placeholder', () => {
+    const compact = formatter.formatCompact(makeOutput({
+      events: {
+        summary: 'Light macro calendar this session.',
+        upcoming: [{ title: 'Low-impact auction', time: '13:00 UTC', importance: 'low' }],
+      },
+    }));
+
+    expect(compact).toContain('📅 Events: none high-impact');
+    expect(compact).not.toContain('Low-impact auction');
+  });
+});
+
+describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
+  it('renders premium Telegram HTML with escaped dynamic content and code levels', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      marketRegime: 'short_heavy_near_support',
+      briefConfidence: 'high',
+      dataStatus: {
+        price: 'fresh',
+        events: 'partial',
+        derivatives: 'fresh',
+        liquidations: 'unavailable',
+      },
+      btc: {
+        summary: 'BTC lost the previous range and is testing recovery.',
+        keyLevels: ['71407.5-71413.9 <recovery>', '74495.8 & resistance'],
+        position: 'below daily + weekly midpoints',
+        structure: 'bearish',
+      },
+      events: {
+        summary: 'Exchange announcements only.',
+        upcoming: [
+          { title: 'HYPE Token Splash <promo> & rewards', time: '2026-06-02T11:10:08Z', importance: 'low' },
+          { title: 'FOMC <Minutes> & press event', time: '21:00 UTC', importance: 'high' },
+        ],
+      },
+    }));
+
+    expect(html.length).toBeLessThanOrEqual(2800);
+    expect(formatter.splitForTelegram(html)).toHaveLength(1);
+    expect(html).toContain('<b>Crypto Asia Brief</b>');
+    expect(html).toContain('<b>Regime:</b> 🔴 Defensive breakdown near support');
+    expect(html).toContain('<b>Sources:</b> ✅ Price · ✅ Derivs · ⚠️ Events · ❌ Liq clusters');
+    expect(html).toContain('Recovery/ref: <code>71407.5-71413.9 &lt;recovery&gt;</code>');
+    expect(html).toContain('Resistance/ref: <code>74495.8 &amp; resistance</code>');
+    expect(html).toContain('🔴 FOMC &lt;Minutes&gt; &amp; press event');
+    expect(html).not.toContain('HYPE Token Splash');
+    expect(html).toContain('Context only. No entries/exits/sizing/leverage.');
+    expect(html).not.toContain('...');
+  });
+
+  it('uses compact informational event placeholder when only low-impact events exist', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      events: {
+        summary: 'Exchange promo calendar.',
+        upcoming: [{ title: 'Low-impact <promo>', time: '13:00 UTC', importance: 'low' }],
+      },
+    }));
+
+    expect(html).toContain('🔵 No high-impact BTC/ETH event confirmed');
+    expect(html).not.toContain('Low-impact');
+  });
 });
 
 describe('OverviewFormatter.splitForTelegram()', () => {
