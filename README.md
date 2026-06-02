@@ -44,6 +44,8 @@ See `.env.example` for all variables. Required:
 - `DATABASE_URL` — PostgreSQL connection string, e.g. `postgresql://crypto:crypto@localhost:5432/crypto_session_overview?schema=public`
 - `GEMINI_API_KEY` — Google AI Studio / Gemini API key for the LLM client
 - `SESSION_OVERVIEW_API_TOKEN` — optional bearer token protecting `POST /overviews/trigger`; set this in staging/production
+- `SESSION_OVERVIEW_TRIGGER_RATE_LIMIT_MAX` — optional trigger limit per token/window; defaults to `5`
+- `SESSION_OVERVIEW_TRIGGER_RATE_LIMIT_WINDOW_MS` — optional trigger window; defaults to `600000`
 
 ## API
 
@@ -86,4 +88,4 @@ npm run prisma:generate
 docker compose up --build
 ```
 
-The compose stack starts PostgreSQL and the app. The app uses `DATABASE_URL=postgresql://crypto:crypto@postgres:5432/crypto_session_overview?schema=public` inside the Docker network.
+The compose stack starts PostgreSQL and the app. The app uses `DATABASE_URL=postgresql://crypto:crypto@postgres:5432/crypto_session_overview?schema=public` inside the Docker network and applies committed Prisma migrations with `prisma migrate deploy` before startup.

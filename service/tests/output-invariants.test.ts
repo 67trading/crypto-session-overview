@@ -396,6 +396,15 @@ describe('checkSourceAwareOutputInvariants()', () => {
     });
     expect(checkSourceAwareOutputInvariants(output, makeInput())).toHaveLength(0);
   });
+
+  it('allows explicit no-confirmed liquidation cluster caveats without cluster data', () => {
+    const output = makeOutput({
+      liquidity: {
+        bullets: ['No confirmed liquidation cluster data available.'],
+      },
+    });
+    expect(checkSourceAwareOutputInvariants(output, makeInput())).toHaveLength(0);
+  });
 });
 
 describe('hasHardViolations()', () => {

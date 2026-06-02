@@ -25,6 +25,10 @@ export type AppConfig = {
   server: {
     port: number;
     apiToken?: string;
+    triggerRateLimit: {
+      maxRequests: number;
+      windowMs: number;
+    };
   };
   scheduler: {
     enabled: boolean;
@@ -53,6 +57,15 @@ function parseSymbols(raw: string): string[] {
     .split(',')
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+}
+
+function parsePositiveIntEnv(name: string, fallback: number): number {
+  const raw = optionalEnv(name, String(fallback));
+  const value = parseInt(raw, 10);
+  if (isNaN(value) || value <= 0) {
+    throw new Error(`Invalid ${name} value: ${raw}`);
+  }
+  return value;
 }
 
 export function loadConfig(): AppConfig {
@@ -110,6 +123,10 @@ export function loadConfig(): AppConfig {
       ...(apiToken !== undefined
         ? { apiToken }
         : {}),
+      triggerRateLimit: {
+        maxRequests: parsePositiveIntEnv('SESSION_OVERVIEW_TRIGGER_RATE_LIMIT_MAX', 5),
+        windowMs: parsePositiveIntEnv('SESSION_OVERVIEW_TRIGGER_RATE_LIMIT_WINDOW_MS', 10 * 60 * 1000),
+      },
     },
     scheduler: {
       enabled: optionalEnv('SCHEDULER_ENABLED', 'true') === 'true',
