@@ -78,7 +78,15 @@ function isUniqueRunKeyConflict(err: unknown): boolean {
 }
 
 function isRetryableTerminalStatus(status: OverviewRecord['status']): boolean {
-  return status === 'FAILED' || status === 'PARTIAL';
+  return status === 'FAILED' || status === 'PARTIAL' || status === 'PUBLISHED_DEGRADED';
+}
+
+function isUsablePreviousBriefStatus(status: OverviewRecord['status']): boolean {
+  return status === 'SUCCESS' || status === 'PUBLISHED_DEGRADED';
+}
+
+function isPublishableStatus(status: OverviewRecord['status']): boolean {
+  return status === 'SUCCESS' || status === 'PUBLISHED_DEGRADED' || status === 'PARTIAL';
 }
 
 function existingOverviewResult(
@@ -137,7 +145,7 @@ function classifyLlmError(error: unknown): LlmErrorKind {
     return 'DAILY_QUOTA_EXHAUSTED';
   }
   if (message.includes('429') || message.includes('RESOURCE_EXHAUSTED')) return 'RATE_LIMITED';
-  if (message.includes('MAX_TOKENS')) return 'MAX_TOKENS';
+  if (lower.includes('max_tokens')) return 'MAX_TOKENS';
   if (lower.includes('failed to parse llm response as json')) return 'INVALID_JSON';
   if (lower.includes('schema validation')) return 'SCHEMA_VALIDATION';
   if (lower.includes('no text content')) return 'NO_TEXT';
@@ -310,11 +318,21 @@ export class OverviewRunner {
     logger.info({ session }, 'Starting session overview run');
 
     try {
-      // 0. Load previous successful brief for diff context
-      const recentRecords = await repository.listOverviews({ session, limit: 10 }).catch(() => []);
-      const previousRecord = recentRecords.find((record) => record.status === 'SUCCESS')
-        ?? await repository.getLatestOverview(session);
-      const previousOutput = previousRecord?.status === 'SUCCESS' ? previousRecord.outputJson : null;
+      // 0. Load previous published/usable brief for diff context. This is advisory:
+      // transient DB failures should not abort a run after fresh market data can be collected.
+      const recentRecords = await repository.listOverviews({ session, limit: 50 }).catch((err) => {
+        logger.warn({ session, err }, 'Failed to list recent overviews for previous brief context');
+        return [];
+      });
+      const latestRecord = recentRecords.length === 0
+        ? await repository.getLatestOverview(session).catch((err) => {
+            logger.warn({ session, err }, 'Failed to load latest overview for previous brief context');
+            return null;
+          })
+        : null;
+      const previousRecord = recentRecords.find((record) => isUsablePreviousBriefStatus(record.status))
+        ?? (latestRecord !== null && isUsablePreviousBriefStatus(latestRecord.status) ? latestRecord : null);
+      const previousOutput = previousRecord !== null ? previousRecord.outputJson : null;
 
       if (options.force !== true) {
         const existingOverview = await repository.getOverviewByRunKey(runKey);
@@ -677,7 +695,7 @@ export class OverviewRunner {
           }),
         };
       }
-      const output = {
+      const outputBase = {
         ...llmResult.output,
         marketRegime: precomputedRegime.marketRegime,
         briefConfidence: precomputedRegime.briefConfidence,
@@ -720,13 +738,16 @@ export class OverviewRunner {
             ? precomputedEvents.upcomingEvents
             : llmResult.output.events.upcoming,
         },
-        whatChanged: previousOutput !== null
-          ? computeWhatChanged(previousOutput, llmResult.output)
-          : firstBriefBullets(),
         note: PRODUCT_FOOTER_NOTE,
         generationMode,
         ...(llmErrorKind !== undefined ? { llmErrorKind } : {}),
         outputSource: generationMode === 'LLM_JSON' ? 'llm_json' : 'deterministic_fallback',
+      };
+      const output = {
+        ...outputBase,
+        whatChanged: previousOutput !== null
+          ? computeWhatChanged(previousOutput, outputBase)
+          : firstBriefBullets(),
       };
 
       // 11b. Hard invariant sweep — hard violations downgrade to PARTIAL and block publish
@@ -748,9 +769,10 @@ export class OverviewRunner {
 
       // 13. Save overview
       const telegramPostIds: string[] = [];
-      const finalStatus = outputHasHardViolations || derivativesFailed
+      const finalStatus: OverviewRecord['status'] = outputHasHardViolations || derivativesFailed
         ? 'PARTIAL'
         : generationMode === 'TEMPLATE_FALLBACK' ? 'PUBLISHED_DEGRADED' : 'SUCCESS';
+      let resultStatus: OverviewRecord['status'] = finalStatus;
       let overviewId: string;
       try {
         overviewId = await repository.saveOverview({
@@ -798,15 +820,21 @@ export class OverviewRunner {
 
       // 15. Publish if requested
       let telegramPublished = false;
-      if (options.publish === true && (finalStatus === 'SUCCESS' || finalStatus === 'PUBLISHED_DEGRADED') && this.deps.publisher !== undefined) {
-        const chatId = this.deps.publisher.chatId ?? 'configured-chat';
+      const publisher = this.deps.publisher;
+      const shouldPublish = options.publish === true
+        && publisher !== undefined
+        && !outputHasHardViolations
+        && isPublishableStatus(finalStatus)
+        && (finalStatus !== 'PARTIAL' || generationMode === 'TEMPLATE_FALLBACK');
+      if (shouldPublish) {
+        const chatId = publisher.chatId ?? 'configured-chat';
         try {
           const telegramReport = this.formatter.formatTelegramHtmlCompact(output);
           const chunks = this.formatter.splitForTelegram(telegramReport);
           for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i]!;
             try {
-              const ids = await this.deps.publisher.publish(chunk, session);
+              const ids = await publisher.publish(chunk, session);
               telegramPostIds.push(...ids);
               for (const msgId of ids) {
                 await repository.saveTelegramPost({
@@ -846,6 +874,13 @@ export class OverviewRunner {
             } catch (updateErr) {
               logger.warn({ err: updateErr }, 'Failed to persist partial Telegram post IDs');
             }
+          } else if (finalStatus === 'PUBLISHED_DEGRADED') {
+            resultStatus = 'PARTIAL';
+            try {
+              await repository.updateOverviewStatus(overviewId, resultStatus);
+            } catch (updateErr) {
+              logger.warn({ err: updateErr }, 'Failed to downgrade overview status after Telegram publish failure');
+            }
           }
           logger.warn({ err }, 'Publishing failed — overview saved but not published');
         }
@@ -862,14 +897,14 @@ export class OverviewRunner {
       }
 
       const durationMs = Date.now() - startedAt;
-      metrics.recordOverviewRun(session, finalStatus, durationMs);
+      metrics.recordOverviewRun(session, resultStatus, durationMs);
 
       logger.info({ session, overviewId, durationMs }, 'Overview run complete');
 
       return {
         overviewId,
         session,
-        status: finalStatus,
+        status: resultStatus,
         output,
         humanReport,
         ...(telegramPostIds.length > 0 ? { telegramPostIds } : {}),

@@ -81,6 +81,10 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
+function stripHtmlTags(text: string): string {
+  return text.replace(/<\/?(?:b|i|u|s|code|pre|blockquote|a)(?:\s+[^>]*)?>/g, '');
+}
+
 function b(text: string): string {
   return `<b>${escapeHtml(text)}</b>`;
 }
@@ -92,6 +96,10 @@ function code(text: string): string {
 function pushIfNonEmpty(lines: string[], line: string): void {
   const trimmed = line.trim();
   if (trimmed !== '') lines.push(trimmed);
+}
+
+function normalizeForDedup(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, ' ').replace(/[.:;,\s]+$/g, '').trim();
 }
 
 function capReportLength(report: string, maxLength = TELEGRAM_MESSAGE_LIMIT): string {
@@ -115,14 +123,22 @@ function capHtmlReportLength(report: string, maxLength: number): string {
   const footer = lines.at(-1) ?? '';
   const bodyLines = lines.slice(0, -1);
   const capped: string[] = [];
+  const truncatedLine = '⚠️ Brief shortened to fit Telegram.';
 
   for (const line of bodyLines) {
-    const candidate = [...capped, line, '', footer].join('\n');
+    const candidate = [...capped, line, truncatedLine, '', footer].join('\n');
     if (candidate.length > maxLength) break;
     capped.push(line);
   }
 
-  return [...capped, '', footer].join('\n').trim();
+  if (capped.length === 0 && bodyLines.length > 0) {
+    const reserved = `\n${truncatedLine}\n\n${footer}`.length;
+    const available = Math.max(0, maxLength - reserved);
+    const firstLine = stripHtmlTags(bodyLines[0] ?? '').slice(0, available).trimEnd();
+    return [escapeHtml(firstLine), truncatedLine, '', footer].filter((line) => line !== '').join('\n').trim();
+  }
+
+  return [...capped, truncatedLine, '', footer].join('\n').trim();
 }
 
 function formatLevels(levels: string[], maxChars: number): string | undefined {
@@ -142,10 +158,16 @@ function compactLiquidityLines(output: OverviewOutput): string[] {
     output.liquidity.downsideVulnerability !== undefined ? `Downside: ${output.liquidity.downsideVulnerability}` : undefined,
   ].filter((line): line is string => line !== undefined);
 
-  const existing = new Set(candidates.map((line) => line.toLowerCase()));
+  const existing = new Set<string>();
+  for (const line of candidates) {
+    const [label, ...valueParts] = line.split(':');
+    existing.add(normalizeForDedup(line));
+    if (valueParts.length > 0) existing.add(normalizeForDedup(valueParts.join(':')));
+    else existing.add(normalizeForDedup(label ?? line));
+  }
   for (const bullet of output.liquidity.bullets) {
     if (candidates.length >= 3) break;
-    if (existing.has(bullet.toLowerCase())) continue;
+    if (existing.has(normalizeForDedup(bullet))) continue;
     candidates.push(bullet);
   }
 
@@ -162,10 +184,14 @@ function compactHtmlLiquidityLines(output: OverviewOutput): { label: string; val
 
   if (candidates.length >= 4) return candidates.slice(0, 4);
 
-  const existing = new Set(candidates.map((line) => `${line.label}:${line.value}`.toLowerCase()));
+  const existing = new Set<string>();
+  for (const line of candidates) {
+    existing.add(normalizeForDedup(`${line.label}:${line.value}`));
+    existing.add(normalizeForDedup(line.value));
+  }
   for (const bullet of output.liquidity.bullets) {
     if (candidates.length >= 4) break;
-    const normalized = bullet.toLowerCase();
+    const normalized = normalizeForDedup(bullet);
     if (existing.has(normalized)) continue;
     candidates.push({ label: 'Note', value: bullet });
   }
@@ -403,7 +429,7 @@ export class OverviewFormatter {
   formatTelegramHtmlCompact(output: OverviewOutput): string {
     const label = SESSION_LABEL[output.session];
     const regimeDisplay = formatRegimeForTelegram(output);
-    const regimeMarker = marketMarker(regimeDisplay);
+    const regimeMarker = marketMarker(output.marketRegime);
     const btcMarker = marketMarker(output.btc.structure);
     const ethMarker = marketMarker(output.eth.vsbtc);
     const altsMarker = marketMarker(`${output.alts.rotationState} ${output.alts.breadth}`);
@@ -534,8 +560,9 @@ export class OverviewFormatter {
       }
 
       pushCurrent();
-      for (let i = 0; i < line.length; i += maxLength) {
-        chunks.push(line.slice(i, i + maxLength));
+      const plainLine = escapeHtml(stripHtmlTags(line));
+      for (let i = 0; i < plainLine.length; i += maxLength) {
+        chunks.push(plainLine.slice(i, i + maxLength));
       }
     }
     pushCurrent();

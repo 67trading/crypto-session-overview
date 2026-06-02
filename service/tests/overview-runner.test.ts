@@ -60,6 +60,7 @@ function makeRepo() {
     saveCollectorRun: vi.fn().mockResolvedValue(undefined),
     saveOverview: vi.fn().mockResolvedValue('overview-id-1'),
     updateOverviewTelegramPosts: vi.fn().mockResolvedValue(undefined),
+    updateOverviewStatus: vi.fn().mockResolvedValue(undefined),
     getLatestOverview: vi.fn().mockResolvedValue(null),
     getOverviewByRunKey: vi.fn().mockResolvedValue(null),
     listOverviews: vi.fn().mockResolvedValue([]),
@@ -232,6 +233,35 @@ describe('OverviewRunner.run()', () => {
     }));
   });
 
+  it('retries once with a deterministic retry key when the base overview is PUBLISHED_DEGRADED', async () => {
+    const existing = {
+      id: 'degraded-overview',
+      session: 'US_CRYPTO' as const,
+      status: 'PUBLISHED_DEGRADED' as const,
+      outputJson: makeValidOutput(),
+    };
+    const repo = makeRepo();
+    repo.getOverviewByRunKey
+      .mockResolvedValueOnce(existing)
+      .mockResolvedValueOnce(null);
+    const marketDataCollector = {
+      collect: vi.fn().mockResolvedValue([
+        makeSnapshot('BTCUSDT', 97000),
+        makeSnapshot('ETHUSDT', 3200),
+      ]),
+    };
+    const deps = makeDeps({ repository: repo, marketDataCollector });
+    const runner = new OverviewRunner(deps);
+
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.status).toBe('SUCCESS');
+    expect(marketDataCollector.collect).toHaveBeenCalled();
+    expect(repo.saveOverview).toHaveBeenCalledWith(expect.objectContaining({
+      runKey: expect.stringMatching(/:retry$/),
+    }));
+  });
+
   it('returns the concurrently saved overview when saveOverview hits a runKey unique conflict', async () => {
     const concurrentOverview = {
       id: 'concurrent-overview',
@@ -328,6 +358,76 @@ describe('OverviewRunner.run()', () => {
     expect(result.status).toBe('SUCCESS');
     // whatChanged is computed — at minimum 1 bullet
     expect(result.output?.whatChanged.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('computes whatChanged against the deterministic-overridden final output', async () => {
+    const prevOutput = makeValidOutput();
+    prevOutput.alts.rotationState = 'selective_rotation';
+    prevOutput.alts.breadth = '60% positive on 24h';
+
+    const repo = makeRepo();
+    repo.listOverviews.mockResolvedValue([
+      {
+        id: 'prev-id',
+        session: 'US_CRYPTO',
+        status: 'SUCCESS',
+        outputJson: prevOutput,
+      },
+    ]);
+
+    const llmOutput = makeValidOutput();
+    llmOutput.alts.rotationState = 'broad_rotation';
+    llmOutput.alts.breadth = '90% positive on 24h';
+
+    const deps = makeDeps({
+      repository: repo,
+      marketDataCollector: {
+        collect: vi.fn().mockResolvedValue([
+          makeSnapshot('BTCUSDT', 97000),
+          makeSnapshot('ETHUSDT', 3200),
+          makeSnapshot('SOLUSDT', 180),
+        ]),
+      },
+      llmClient: { modelName: 'test', generateOverview: vi.fn().mockResolvedValue({ output: llmOutput }) },
+    });
+    const runner = new OverviewRunner(deps);
+
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.output?.alts.rotationState).not.toBe('broad_rotation');
+    expect(result.output?.whatChanged.join(' ')).not.toContain('broad_rotation');
+    expect(result.output?.whatChanged.join(' ')).not.toContain('90% positive');
+  });
+
+  it('uses a previous PUBLISHED_DEGRADED brief for diff context', async () => {
+    const prevOutput = makeValidOutput();
+    const repo = makeRepo();
+    repo.listOverviews.mockResolvedValue([
+      {
+        id: 'degraded-id',
+        session: 'US_CRYPTO',
+        status: 'PUBLISHED_DEGRADED',
+        outputJson: prevOutput,
+      },
+    ]);
+    const runner = new OverviewRunner(makeDeps({ repository: repo }));
+
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.output?.whatChanged[0]).not.toMatch(/initial/i);
+    expect(repo.getLatestOverview).not.toHaveBeenCalled();
+  });
+
+  it('continues with no previous brief when advisory previous lookup fails', async () => {
+    const repo = makeRepo();
+    repo.listOverviews.mockRejectedValue(new Error('list failed'));
+    repo.getLatestOverview.mockRejectedValue(new Error('latest failed'));
+    const runner = new OverviewRunner(makeDeps({ repository: repo }));
+
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.status).toBe('SUCCESS');
+    expect(result.output?.whatChanged[0]).toMatch(/initial/i);
   });
 
   it('sends a bounded previous brief context to the LLM input', async () => {
@@ -496,6 +596,37 @@ describe('OverviewRunner.run()', () => {
     expect(publisher.publish).toHaveBeenCalledWith(expect.stringContaining('<b>Crypto US Brief</b>'), 'US_CRYPTO');
   });
 
+  it('publishes deterministic fallback when derivatives and LLM both fail', async () => {
+    const repo = makeRepo();
+    const publisher = {
+      chatId: 'chat-real',
+      publish: vi.fn().mockResolvedValue(['msg-partial-fallback']),
+    };
+    const deps = makeDeps({
+      repository: repo,
+      publisher,
+      derivativesCollector: {
+        collect: vi.fn().mockRejectedValue(new Error('Derivatives unavailable')),
+      },
+      llmClient: {
+        modelName: 'test-model',
+        generateOverview: vi.fn().mockRejectedValue(new Error('max_tokens')),
+      },
+    });
+    const runner = new OverviewRunner(deps);
+
+    const result = await runner.run({ ...RUN_OPTIONS, publish: true });
+
+    expect(result.status).toBe('PARTIAL');
+    expect(result.telegramPublished).toBe(true);
+    expect(result.telegramPostIds).toEqual(['msg-partial-fallback']);
+    expect(result.output).toEqual(expect.objectContaining({
+      generationMode: 'TEMPLATE_FALLBACK',
+      llmErrorKind: 'MAX_TOKENS',
+    }));
+    expect(publisher.publish).toHaveBeenCalledWith(expect.stringContaining('<b>Crypto US Brief</b>'), 'US_CRYPTO');
+  });
+
   it('publishes to Telegram and saves post records when publish=true', async () => {
     const publisher = {
       chatId: 'chat-real',
@@ -542,6 +673,31 @@ describe('OverviewRunner.run()', () => {
       messageIndex: 0,
       text: expect.any(String),
     }));
+  });
+
+  it('downgrades PUBLISHED_DEGRADED to PARTIAL when Telegram publish fails before any message is sent', async () => {
+    const publisher = {
+      publish: vi.fn().mockRejectedValue(new Error('Telegram unavailable')),
+    };
+    const repo = makeRepo();
+    const deps = makeDeps({
+      repository: repo,
+      publisher,
+      llmClient: {
+        modelName: 'test-model',
+        generateOverview: vi.fn().mockRejectedValue(new Error('429 RESOURCE_EXHAUSTED daily quota exceeded')),
+      },
+    });
+    const runner = new OverviewRunner(deps);
+
+    const result = await runner.run({ ...RUN_OPTIONS, publish: true });
+
+    expect(result.status).toBe('PARTIAL');
+    expect(result.telegramPublished).toBe(false);
+    expect(repo.saveOverview).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'PUBLISHED_DEGRADED',
+    }));
+    expect(repo.updateOverviewStatus).toHaveBeenCalledWith('overview-id-1', 'PARTIAL');
   });
 
   it('compacts verbose reports into a single Telegram message', async () => {

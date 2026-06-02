@@ -343,6 +343,20 @@ describe('OverviewFormatter.formatCompact()', () => {
     expect(compact).toContain('📅 Events: none high-impact');
     expect(compact).not.toContain('Low-impact auction');
   });
+
+  it('deduplicates compact liquidity bullets against structured values', () => {
+    const compact = formatter.formatCompact(makeOutput({
+      liquidity: {
+        immediateUpside: '97,400 weekly high',
+        recoveryZone: '95,800-96,200',
+        bullets: ['97,400 weekly high', 'Fresh lower timeframe cluster.'],
+      },
+    }));
+
+    expect(compact).toContain('* Upside: 97,400 weekly high');
+    expect(compact).not.toContain('* 97,400 weekly high');
+    expect(compact).toContain('Fresh lower timeframe cluster.');
+  });
 });
 
 describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
@@ -374,7 +388,7 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html.length).toBeLessThanOrEqual(2800);
     expect(formatter.splitForTelegram(html)).toHaveLength(1);
     expect(html).toContain('<b>Crypto Asia Brief</b>');
-    expect(html).toContain('<b>Regime:</b> 🔴 Defensive breakdown near support');
+    expect(html).toContain('<b>Regime:</b> ⚫ Defensive breakdown near support');
     expect(html).toContain('<b>Sources:</b> ✅ Price · ✅ Derivs · ⚠️ Events · ❌ Liq clusters');
     expect(html).toContain('Recovery/ref: <code>71407.5-71413.9 &lt;recovery&gt;</code>');
     expect(html).toContain('Resistance/ref: <code>74495.8 &amp; resistance</code>');
@@ -395,6 +409,20 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).toContain('🔵 No high-impact BTC/ETH event confirmed');
     expect(html).not.toContain('Low-impact');
   });
+
+  it('deduplicates HTML liquidity bullets against structured values', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      liquidity: {
+        recoveryZone: '95,800-96,200',
+        immediateUpside: '97,400 weekly high',
+        bullets: ['95,800-96,200', 'Fresh lower timeframe cluster.'],
+      },
+    }));
+
+    expect((html.match(/95,800-96,200/g) ?? [])).toHaveLength(1);
+    expect(html).toContain('Fresh lower timeframe cluster.');
+  });
+
 });
 
 describe('OverviewFormatter.splitForTelegram()', () => {
@@ -453,6 +481,19 @@ describe('OverviewFormatter.splitForTelegram()', () => {
     expect(chunks.join('')).toBe(report);
     for (const chunk of chunks) {
       expect(chunk.length).toBeLessThanOrEqual(4096);
+    }
+  });
+
+  it('does not split overlong HTML lines in the middle of tags', () => {
+    const report = `<b>${'x'.repeat(5000)}</b>`;
+    const chunks = formatter.splitForTelegram(report);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.join('')).toBe('x'.repeat(5000));
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(4096);
+      expect(chunk).not.toContain('<b>');
+      expect(chunk).not.toContain('</b>');
     }
   });
 

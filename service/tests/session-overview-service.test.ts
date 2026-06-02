@@ -11,6 +11,7 @@ function makeMockRepo(overrides: Record<string, ReturnType<typeof vi.fn>> = {}) 
     saveCollectorRun: noopFn,
     saveOverview: noopFn,
     updateOverviewTelegramPosts: noopFn,
+    updateOverviewStatus: noopFn,
     getLatestOverview: noopFn,
     getOverviewByRunKey: noopFn,
     listOverviews: noopFn,
