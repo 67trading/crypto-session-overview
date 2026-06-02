@@ -204,7 +204,8 @@ export function checkSourceAwareOutputInvariants(output: OverviewOutput, input: 
     violations.push('Options claims require successful Deribit options context');
   }
 
-  const exactClusterClaim = /\b(?:nearest|large|major|exact|confirmed)\b.{0,40}\bliquidation clusters?\b/.test(text)
+  const noConfirmedClusterWording = /\bno confirmed\b.{0,40}\bliquidation clusters?\b/.test(text);
+  const exactClusterClaim = !noConfirmedClusterWording && /\b(?:nearest|large|major|exact|confirmed)\b.{0,40}\bliquidation clusters?\b/.test(text)
     || /\bliquidation clusters?\b.{0,40}\b(?:above|below|at|near|around)\s+\$?\d/.test(text)
     || /\bliquidation heatmap shows\b/.test(text);
   if (exactClusterClaim && !hasLiquidationClusters(input)) {
