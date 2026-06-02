@@ -81,16 +81,6 @@ export class OverviewFormatter {
     }
     lines.push('');
 
-    // Major assets (omit section if none)
-    if (output.majorAssets.length > 0) {
-      lines.push('📈 Major Assets');
-      for (const asset of output.majorAssets) {
-        const levels = asset.keyLevels.length > 0 ? `  [${asset.keyLevels.join(' · ')}]` : '';
-        lines.push(`${asset.symbol} — ${asset.summary}${levels}`);
-      }
-      lines.push('');
-    }
-
     // Alts
     lines.push('🌊 Alts');
     lines.push(output.alts.summary);

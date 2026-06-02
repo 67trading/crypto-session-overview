@@ -192,10 +192,10 @@ describe('OverviewFormatter.format()', () => {
     expect(liqPos).toBeLessThan(eventsPos);
   });
 
-  it('includes major assets section when non-empty', () => {
+  it('omits major assets section even when output contains major assets', () => {
     const result = formatter.format(makeOutput());
-    expect(result).toContain('📈 Major Assets');
-    expect(result).toContain('SOLUSDT');
+    expect(result).not.toContain('📈 Major Assets');
+    expect(result).not.toContain('SOLUSDT');
   });
 
   it('omits major assets section when empty', () => {
