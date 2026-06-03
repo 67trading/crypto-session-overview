@@ -302,7 +302,7 @@ export class OverviewFormatter {
     if (output.btc.keyLevels.length > 0) {
       lines.push(`Key levels: ${compact(output.btc.keyLevels.join(' · '), MAX_LEVELS_CHARS)}`);
     }
-    lines.push(`Position: ${compact(output.btc.position, MAX_DETAIL_CHARS)}  |  Structure: ${output.btc.structure}`);
+    lines.push(`Position: ${compact(output.btc.position, MAX_DETAIL_CHARS)}  |  Structure: ${output.btc.headerLabel ?? output.btc.structure}`);
     lines.push('');
 
     // ETH
@@ -412,7 +412,7 @@ export class OverviewFormatter {
     }
 
     lines.push('');
-    lines.push(`₿ BTC: ${output.btc.structure} · ${compact(output.btc.position, COMPACT_DETAIL_CHARS)}`);
+    lines.push(`₿ BTC: ${output.btc.headerLabel ?? output.btc.structure} · ${compact(output.btc.position, COMPACT_DETAIL_CHARS)}`);
     pushIfNonEmpty(lines, compact(output.btc.summary, COMPACT_SUMMARY_CHARS));
     if (btcLevels !== undefined) lines.push(`Levels: ${btcLevels}`);
 
@@ -461,6 +461,7 @@ export class OverviewFormatter {
     const label = SESSION_LABEL[output.session];
     const regimeDisplay = formatRegimeForTelegram(output);
     const regimeMarker = marketMarker(output.marketRegime);
+    const btcHeader = output.btc.headerLabel ?? output.btc.structure;
     const btcMarker = marketMarker(output.btc.structure);
     const ethMeta = output.eth as OverviewOutput['eth'] & { headerLabel?: string; ethUsd24hLabel?: string };
     const ethHeader = ethMeta.headerLabel ?? 'ETH context';
@@ -543,7 +544,7 @@ export class OverviewFormatter {
       b('📌 Changed'),
       ...(changed.length > 0 ? changed : ['⚪ Initial session read']),
       '',
-      `${b(`₿ BTC · ${btcMarker} ${output.btc.structure}`)}`,
+      `${b(`₿ BTC · ${btcMarker} ${btcHeader}`)}`,
       ...btcBullets,
       '',
       `${b(`Ξ ETH · ${ethMarker} ${ethHeader}`)}`,

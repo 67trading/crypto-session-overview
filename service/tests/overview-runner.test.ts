@@ -28,6 +28,33 @@ function makeSnapshot(symbol: string, price: number): OverviewMarketSnapshot {
   };
 }
 
+function candle(open: number, high: number, low: number, close: number, offsetHours: number): HtfCandle {
+  const closeTimeMs = Date.now() + offsetHours * 3600_000;
+  return { openTimeMs: closeTimeMs - 3600_000, closeTimeMs, open, high, low, close, volume: 1000 };
+}
+
+function makeWeakRangeBtcSnapshot(): OverviewMarketSnapshot {
+  return {
+    symbol: 'BTCUSDT',
+    latestPrice: 66700,
+    candles: {
+      weekly: [
+        candle(70000, 78089.9, 65000, 67000, -24 * 7),
+        candle(67000, 69000, 65412, 66700, 0),
+      ],
+      daily: [
+        candle(67500, 71413.9, 66200, 66700, -24),
+        candle(66754.8, 67500, 65412, 66700, 0),
+      ],
+      fourHour: [
+        candle(66000, 74225.4, 65412, 67000, -8),
+        candle(67000, 68000, 66000, 66800, -4),
+        candle(66800, 67500, 66200, 66700, 0),
+      ],
+    },
+  };
+}
+
 function makeDerivatives(symbol: string): DerivativesContext {
   return { symbol, fundingStatus: 'neutral', oiStatus: 'stable', positioningStatus: 'balanced' };
 }
@@ -121,6 +148,47 @@ describe('OverviewRunner.run()', () => {
     expect(result.overviewId).toBe('overview-id-1');
     expect(result.session).toBe('US_CRYPTO');
     expect(result.telegramPublished).toBe(false);
+  });
+
+  it('overrides contradictory LLM BTC presentation with deterministic BTC context', async () => {
+    const repo = makeRepo();
+    const llmOutput = makeValidOutput();
+    llmOutput.btc = {
+      summary: 'BTC has continuation bullish tone from the previous session.',
+      keyLevels: ['97000'],
+      position: 'above daily midpoint',
+      structure: 'range',
+    };
+    const deps = makeDeps({
+      repository: repo,
+      marketDataCollector: {
+        collect: vi.fn().mockResolvedValue([
+          makeWeakRangeBtcSnapshot(),
+          makeSnapshot('ETHUSDT', 1800),
+        ]),
+      },
+      llmClient: {
+        modelName: 'test-model',
+        generateOverview: vi.fn().mockResolvedValue({ output: llmOutput }),
+      },
+    });
+    const runner = new OverviewRunner(deps);
+
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.status).toBe('SUCCESS');
+    const saveCall = repo.saveOverview.mock.calls[0][0] as { outputJson: OverviewOutput };
+    expect(saveCall.outputJson.btc).toEqual(expect.objectContaining({
+      structure: 'bearish',
+      headerLabel: 'bearish range pressure',
+      position: 'Below daily midpoint and below weekly midpoint.',
+      summary: 'BTC remains inside the 4H range, but below daily and weekly midpoints, leaving pressure to the downside.',
+      keyLevels: [
+        '78,089.9 (previous week high)',
+        '74,225.4 (4H last swing high)',
+      ],
+    }));
+    expect(saveCall.outputJson.btc.summary).not.toMatch(/continuation bullish/i);
   });
 
   it('returns an existing overview for the same session window unless force=true', async () => {
@@ -787,8 +855,8 @@ describe('OverviewRunner.run()', () => {
 
   it('logs invariant violations as warnings without failing the run', async () => {
     const badOutput = makeValidOutput();
-    // Violate: go long is a forbidden phrase outside deterministic scenario overrides.
-    badOutput.btc.summary = 'Go long above 98000 for ATH push.';
+    // Violate: go long is a forbidden phrase outside deterministic BTC/scenario overrides.
+    badOutput.derivatives.summary = 'Go long above 98000 for ATH push.';
 
     const logger = makeLogger();
     const deps = makeDeps({
@@ -814,7 +882,7 @@ describe('OverviewRunner.run()', () => {
 
   it('does not publish to Telegram when output has hard violations (forbidden phrase)', async () => {
     const badOutput = makeValidOutput();
-    badOutput.btc.summary = 'Go long above 98000.';
+    badOutput.derivatives.summary = 'Go long above 98000.';
 
     const publisher = { publish: vi.fn().mockResolvedValue(['msg-1']) };
     const deps = makeDeps({

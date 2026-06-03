@@ -35,6 +35,9 @@ STRICT RULES — violation causes the response to be rejected:
     resistance/supply, recovery zones, larger magnet areas (options, CME gaps, round levels), and
     downside vulnerability. If liquidation cluster data is unavailable, say so in one bullet and do
     not fabricate cluster levels. Use only levels visible in input.levels and input.derivativesContext.
+4h. btc.summary, btc.keyLevels, btc.position, btc.structure, and btc.headerLabel are pre-computed —
+    copy them VERBATIM from input.precomputedBtcPresentation when present. Do not infer or rewrite
+    BTC structure from candles. Do not make BTC sound more bullish/neutral than input.marketContext.btcTone.
 5. If a source status is "failed" or "unavailable", write "data unavailable" in that section's
    summary — do not invent data.
 5b. Do not claim token unlock absence unless sourceHealth shows mobula-unlocks status "success".
@@ -72,10 +75,11 @@ Required JSON schema (all fields required):
   },
   "whatChanged": ["string — max 8 items, each a concise bullet describing change vs previous brief"],
   "btc": {
-    "summary": "string — 1-2 sentences describing current price conditions only",
-    "keyLevels": ["string — e.g. '97400 (previous week high)'"],
-    "position": "string — e.g. 'above daily midpoint, below weekly high'",
-    "structure": "bullish | bearish | range | transition | unknown"
+    "summary": "string — copy exactly from input.precomputedBtcPresentation.summary when present",
+    "keyLevels": ["string — copy exactly from input.precomputedBtcPresentation.keyLevelsDisplay when present"],
+    "position": "string — copy exactly from input.precomputedBtcPresentation.position when present",
+    "structure": "bullish | bearish | range | transition | unknown — copy exactly from input.precomputedBtcPresentation.structure when present",
+    "headerLabel": "string — optional, copy exactly from input.precomputedBtcPresentation.headerLabel when present"
   },
   "eth": {
     "summary": "string — 1-2 sentences",

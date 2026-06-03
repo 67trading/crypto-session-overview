@@ -52,6 +52,16 @@ export type PrecomputedRegime = {
   briefConfidence: 'low' | 'medium' | 'high';
 };
 
+export type BtcPresentationContext = {
+  symbol: 'BTCUSDT';
+  structure: OverviewOutput['btc']['structure'];
+  headerLabel: string;
+  position: string;
+  summary: string;
+  keyLevelsDisplay: string[];
+  source: 'deterministic_htf_levels';
+};
+
 export type Venue = 'bybit' | 'binance' | 'okx' | 'deribit';
 export type SourceScope =
   | 'single_venue'
@@ -412,6 +422,7 @@ export type OverviewInput = {
   dataStatus?: DataStatus;
   previousBrief?: PreviousBriefContext;
   precomputedRegime?: PrecomputedRegime;
+  precomputedBtcPresentation?: BtcPresentationContext;
   altsBreadth?: AltsBreadthSummary;
   derivativesNarrative?: DerivativesNarrativeSummary;
   precomputedEvents?: PrecomputedEvents;

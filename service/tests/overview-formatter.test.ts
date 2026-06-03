@@ -523,6 +523,21 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).toContain('Reclaim: Above 68,806.95 -&gt; relief attempt.');
   });
 
+  it('uses deterministic BTC header label in Telegram instead of raw structure', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      btc: {
+        summary: 'BTC remains inside the 4H range, but below daily and weekly midpoints, leaving pressure to the downside.',
+        keyLevels: ['78089.9 (previous week high)', '74225.4 (4H last swing high)'],
+        position: 'Below daily midpoint and below weekly midpoint.',
+        structure: 'bearish',
+        headerLabel: 'bearish range pressure',
+      },
+    }));
+
+    expect(html).toContain('₿ BTC · 🔴 bearish range pressure');
+    expect(html).not.toContain('₿ BTC · 🟡 range');
+  });
+
   it('shows ETH/USD 24h as not shown when metadata is unavailable', () => {
     const html = formatter.formatTelegramHtmlCompact(makeOutput({
       eth: {

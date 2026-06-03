@@ -27,6 +27,7 @@ import { PRODUCT_FOOTER_NOTE, buildPresentationContext } from './presentation-co
 import { computeReportConfidence } from './market-regime-confidence.js';
 import { buildDeterministicScenarios } from './scenario-builder.js';
 import { buildCrossVenueConsensus } from './cross-venue-consensus-builder.js';
+import { buildBtcPresentationContext, btcPresentationToOutput } from './btc-presentation-builder.js';
 import { metrics } from './metrics.js';
 import {
   computeWeeklyLevels,
@@ -646,6 +647,19 @@ export class OverviewRunner {
         hasCriticalEvents: precomputedEvents.hasCritical,
         dataStatus,
       });
+      const btcPresentation = buildBtcPresentationContext({
+        btcTone: btcSnapshot !== undefined && btcLevels !== undefined
+          ? (() => {
+              const price = btcSnapshot.latestPrice;
+              if (btcLevels.weekly !== null && price > btcLevels.weekly.previousWeekHigh) return 'bullish_breakout';
+              if (btcLevels.weekly !== null && price < btcLevels.weekly.previousWeekLow) return 'bearish_breakdown';
+              if (btcLevels.daily !== null && price > btcLevels.daily.dailyMidpoint) return 'constructive';
+              if (btcLevels.daily !== null && price < btcLevels.daily.dailyMidpoint) return 'weak';
+              return 'neutral';
+            })()
+          : 'unknown',
+        levels: btcLevels,
+      });
 
       const input = this.inputBuilder.build({
         session,
@@ -661,6 +675,7 @@ export class OverviewRunner {
         dataStatus,
         ...(previousBrief !== undefined ? { previousBrief } : {}),
         precomputedRegime,
+        precomputedBtcPresentation: btcPresentation,
         altsBreadth,
         derivativesNarrative,
         precomputedEvents,
@@ -743,9 +758,14 @@ export class OverviewRunner {
         ...precomputedRegime,
         briefConfidence: confidenceBreakdown.label,
       };
+      const finalBtcPresentation = buildBtcPresentationContext({
+        btcTone: augmentedInput.marketContext.btcTone,
+        levels: btcLevels,
+      });
       augmentedInput = {
         ...augmentedInput,
         precomputedRegime: confidenceAdjustedRegime,
+        precomputedBtcPresentation: finalBtcPresentation,
         confidenceBreakdown,
       };
       augmentedInput = {
@@ -836,6 +856,7 @@ export class OverviewRunner {
             ? derivativesNarrative.positioning
             : llmResult.output.derivatives.positioning,
         },
+        btc: btcPresentationToOutput(finalBtcPresentation),
         eth: {
           ...llmResult.output.eth,
           headerLabel: crossMarket.ethHeaderLabel,

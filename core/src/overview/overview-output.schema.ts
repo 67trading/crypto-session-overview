@@ -51,6 +51,7 @@ export const OverviewOutputSchema = z.object({
     keyLevels: z.array(z.string()),
     position: z.string(),
     structure: z.enum(['bullish', 'bearish', 'range', 'transition', 'unknown']),
+    headerLabel: z.string().optional(),
   }),
 
   eth: z.object({
