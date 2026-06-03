@@ -232,6 +232,12 @@ function formatAltRotation(output: OverviewOutput): string {
   return output.alts.rotationState.replace(/_/g, ' ');
 }
 
+function formatEthUsd24hLabel(output: OverviewOutput): string {
+  const ethMeta = output.eth as OverviewOutput['eth'] & { ethUsd24hLabel?: string };
+  const label = ethMeta.ethUsd24hLabel;
+  return label === 'strong' || label === 'weak' || label === 'neutral' ? label : 'not shown';
+}
+
 function eventMarker(importance: string): string {
   if (importance === 'critical' || importance === 'high') return '🔴';
   if (importance === 'medium') return '🟠';
@@ -484,6 +490,7 @@ export class OverviewFormatter {
     ].filter((line) => line.trim() !== '•').slice(0, 4);
     const ethBullets = [
       `• ${escapeHtml(compactComplete(output.eth.vsbtc, 90))}`,
+      `• ETH/USD 24h: ${escapeHtml(formatEthUsd24hLabel(output))}`,
       ...ethLevels.map((level) => `• Ref: ${level}`),
       `• ${escapeHtml(compactComplete(output.eth.summary, 80))}`,
     ].filter((line) => line.trim() !== '•').slice(0, 3);

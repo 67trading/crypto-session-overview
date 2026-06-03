@@ -511,6 +511,7 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).toContain('<b>Confidence:</b> 🟡 medium');
     expect(html).toContain('<b>Reason:</b> Derivatives are source-scoped');
     expect(html).toContain('Ξ ETH · 🔴 ETH/BTC 7d resilience, USD weak');
+    expect(html).toContain('ETH/USD 24h: weak');
     expect(html).toContain('🌊 Alts · ⚪ tracked basket rotation');
     expect(html).toContain('Rotation: tracked basket positive');
     expect(html).not.toContain('Rotation: broad rotation');
@@ -519,6 +520,21 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).toContain('Options ref: <code>75000 max pain · Deribit · front_expiry 07JUN26</code>');
     expect(html).toContain('trading ends <code>2026-06-10T08:00:00.000Z</code>');
     expect(html).toContain('Reclaim: Above 68,806.95 -&gt; relief attempt.');
+  });
+
+  it('shows ETH/USD 24h as not shown when metadata is unavailable', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      eth: {
+        summary: 'ETH context limited.',
+        vsbtc: 'ETH/BTC rising — ETH gaining vs BTC (+3.0% over 7d)',
+        keyLevels: ['2142'],
+        headerLabel: 'ETH/BTC 7d resilience',
+        ethUsd24hLabel: 'unknown',
+      },
+    }));
+
+    expect(html).toContain('ETH/BTC rising — ETH gaining vs BTC');
+    expect(html).toContain('ETH/USD 24h: not shown');
   });
 
 });
