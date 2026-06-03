@@ -7,6 +7,36 @@ const SELECTIVE_ROTATION_BREADTH_THRESHOLD = 35;
 const OUTPERFORMANCE_MARGIN = 0.003; // 0.3% above BTC to count as alts outperforming
 const WEAK_RETURN_THRESHOLD = -0.01; // -1% average alt return for 'weak' classification
 
+export const MIN_BROAD_ALT_UNIVERSE_SIZE = 30;
+
+export function unavailableBroadAltPerpTape(reason: string, eligibleCount = 0): AltsBreadthSummary {
+  return {
+    breadthPercent: 0,
+    positiveCount: 0,
+    totalTracked: eligibleCount,
+    breadthLabel: `Broad alt perp tape unavailable: ${reason}`,
+    rotationState: 'unknown',
+    sourceScope: 'broad_alt_perp_tape',
+    universeName: 'Bybit/Binance/OKX liquid USDT perp tape',
+    timeBasis: 'rolling_24h',
+    venues: ['bybit', 'binance', 'okx'],
+    unavailableReason: reason,
+    canRenderBroadLabel: false,
+  };
+}
+
+export function assertAltsCanRender(result: AltsBreadthSummary): void {
+  if (result.sourceScope === 'tracked_basket') {
+    throw new Error('Configured symbols cannot power production Alts breadth');
+  }
+  if (result.sourceScope === 'broad_alt_perp_tape' && result.totalTracked < MIN_BROAD_ALT_UNIVERSE_SIZE) {
+    throw new Error('Broad alt perp tape requires at least 30 eligible assets');
+  }
+  if (result.canRenderBroadLabel === false && result.rotationState === 'broad_rotation') {
+    throw new Error('Cannot render broad label without broad universe');
+  }
+}
+
 export function analyzeAltsBreadth(
   snapshots: OverviewMarketSnapshot[],
   excludeSymbols: string[] = ['BTCUSDT', 'ETHUSDT'],

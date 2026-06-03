@@ -399,6 +399,62 @@ describe('OverviewRunner.run()', () => {
     expect(result.output?.whatChanged.join(' ')).not.toContain('90% positive');
   });
 
+  it('does not use configured run symbols as production Alts breadth', async () => {
+    const deps = makeDeps({
+      marketDataCollector: {
+        collect: vi.fn().mockResolvedValue([
+          makeSnapshot('BTCUSDT', 97000),
+          makeSnapshot('ETHUSDT', 3200),
+          makeSnapshot('SOLUSDT', 180),
+          makeSnapshot('BNBUSDT', 650),
+          makeSnapshot('XRPUSDT', 2),
+        ]),
+      },
+    });
+    const runner = new OverviewRunner(deps);
+
+    const result = await runner.run({
+      ...RUN_OPTIONS,
+      symbols: { core: ['BTCUSDT', 'ETHUSDT'], major: ['SOLUSDT', 'BNBUSDT', 'XRPUSDT'], watch: [] },
+    });
+
+    expect(result.output?.alts.sourceScope).toBe('broad_alt_perp_tape');
+    expect(result.output?.alts.rotationState).toBe('unknown');
+    expect(result.output?.alts.breadth).toContain('Broad alt perp tape unavailable');
+    expect(result.output?.alts.breadth).not.toContain('tracked alts');
+  });
+
+  it('uses broad alt perp tape collector data for production Alts breadth', async () => {
+    const { contextCollectorEntry, mergeBreadthContext } = await import('../src/context-merge.js');
+    const broadBreadth = {
+      breadthPercent: 61,
+      positiveCount: 45,
+      negativeCount: 29,
+      neutralCount: 0,
+      totalTracked: 74,
+      breadthLabel: '61% of 74 liquid alt perps positive on 24h',
+      rotationState: 'selective_rotation' as const,
+      sourceScope: 'broad_alt_perp_tape' as const,
+      universeName: 'Bybit/Binance/OKX liquid USDT perp tape',
+      timeBasis: 'rolling_24h' as const,
+      canRenderBroadLabel: true,
+    };
+    const collector = {
+      sourceName: 'broad-alt-perp-tape',
+      collect: vi.fn().mockResolvedValue({ status: 'success', data: broadBreadth, itemCount: 74 }),
+    };
+    const runner = new OverviewRunner(makeDeps({
+      contextCollectors: [contextCollectorEntry(collector, mergeBreadthContext)],
+    }));
+
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.output?.alts.sourceScope).toBe('broad_alt_perp_tape');
+    expect(result.output?.alts.breadth).toBe('61% of 74 liquid alt perps positive on 24h');
+    expect(result.output?.alts.universeName).toBe('Bybit/Binance/OKX liquid USDT perp tape');
+    expect(result.output?.alts.canRenderBroadLabel).toBe(true);
+  });
+
   it('uses a previous PUBLISHED_DEGRADED brief for diff context', async () => {
     const prevOutput = makeValidOutput();
     const repo = makeRepo();

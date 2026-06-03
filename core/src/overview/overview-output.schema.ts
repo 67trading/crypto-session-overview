@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const DataStatusValueSchema = z.enum(['fresh', 'stale', 'partial', 'failed', 'unavailable']);
 const ConfidenceLabelSchema = z.enum(['low', 'medium', 'high']);
-const SourceScopeSchema = z.enum(['single_venue', 'cross_venue', 'tracked_basket', 'market_wide', 'options_exchange', 'announcement_source', 'unknown']);
+const SourceScopeSchema = z.enum(['single_venue', 'cross_venue', 'tracked_basket', 'broad_alt_perp_tape', 'market_wide_top_n', 'market_wide', 'options_exchange', 'announcement_source', 'unknown']);
 const VerificationStatusSchema = z.enum(['confirmed_cross_venue', 'confirmed_single_source', 'source_scoped', 'ambiguous', 'unavailable', 'stale']);
 
 export const OverviewOutputSchema = z.object({
@@ -70,6 +70,11 @@ export const OverviewOutputSchema = z.object({
     sourceScope: SourceScopeSchema.optional(),
     basketName: z.string().optional(),
     timeBasis: z.string().optional(),
+    universeName: z.string().optional(),
+    minVolumeUsd: z.number().optional(),
+    venues: z.array(z.enum(['bybit', 'binance', 'okx', 'deribit'])).optional(),
+    unavailableReason: z.string().optional(),
+    canRenderBroadLabel: z.boolean().optional(),
   }),
 
   derivatives: z.object({

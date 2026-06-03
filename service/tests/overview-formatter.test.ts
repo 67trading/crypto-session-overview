@@ -307,7 +307,7 @@ describe('OverviewFormatter.format()', () => {
       },
     }));
 
-    expect(result).toContain('Rotation: tracked basket positive');
+    expect(result).toContain('Rotation: unavailable');
     expect(result).not.toContain('Rotation: broad rotation');
   });
 });
@@ -382,7 +382,7 @@ describe('OverviewFormatter.formatCompact()', () => {
       },
     }));
 
-    expect(compact).toContain('🌊 Alts: tracked basket positive · 83% of 6 tracked alts positive on 24h');
+    expect(compact).toContain('🌊 Alts: unavailable · 83% of 6 tracked alts positive on 24h');
     expect(compact).not.toContain('broad rotation');
   });
 });
@@ -512,8 +512,9 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).toContain('<b>Reason:</b> Derivatives are source-scoped');
     expect(html).toContain('Ξ ETH · 🔴 ETH/BTC 7d resilience, USD weak');
     expect(html).toContain('ETH/USD 24h: weak');
-    expect(html).toContain('🌊 Alts · ⚪ tracked basket rotation');
-    expect(html).toContain('Rotation: tracked basket positive');
+    expect(html).toContain('🌊 Alts · ⚪ unavailable');
+    expect(html).toContain('Scope: broad alt perp tape unavailable; configured symbols are not used for production Alts breadth');
+    expect(html).not.toContain('tracked basket rotation');
     expect(html).not.toContain('Rotation: broad rotation');
     expect(html).toContain('📊 Derivs · ⚪ Bybit-scoped neutral');
     expect(html).toContain('Funding: neutral across BTC/ETH · Bybit-scoped');
@@ -535,6 +536,24 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
 
     expect(html).toContain('ETH/BTC rising — ETH gaining vs BTC');
     expect(html).toContain('ETH/USD 24h: not shown');
+  });
+
+  it('renders production broad alt perp tape scope', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      alts: {
+        summary: 'Broad alt perps are positive.',
+        rotationState: 'broad_rotation',
+        breadth: '61% of 74 liquid alt perps positive on 24h',
+        sourceScope: 'broad_alt_perp_tape',
+        universeName: 'Bybit/Binance/OKX liquid USDT perp tape',
+        canRenderBroadLabel: true,
+      },
+    }));
+
+    expect(html).toContain('🌊 Alts · ⚪ broad perp rotation');
+    expect(html).toContain('Breadth: 61% of 74 liquid alt perps positive on 24h');
+    expect(html).toContain('Scope: Bybit/Binance/OKX liquid USDT perp tape');
+    expect(html).not.toContain('tracked basket');
   });
 
 });

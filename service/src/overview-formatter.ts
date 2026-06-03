@@ -223,13 +223,26 @@ function formatRegimeForTelegram(output: OverviewOutput): string {
 
 function formatAltRotation(output: OverviewOutput): string {
   const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string };
+  if (altsMeta.sourceScope === 'broad_alt_perp_tape') {
+    if ((altsMeta as { canRenderBroadLabel?: boolean }).canRenderBroadLabel === false || output.alts.rotationState === 'unknown') return 'unavailable';
+    if (output.alts.rotationState === 'broad_rotation') return 'broad perp rotation';
+    if (output.alts.rotationState === 'selective_rotation') return 'mixed perp rotation';
+    if (output.alts.rotationState === 'weak') return 'broad perp weakness';
+    if (output.alts.rotationState === 'no_rotation') return 'weak perp tape';
+  }
   if (altsMeta.sourceScope === 'tracked_basket') {
-    if (output.alts.rotationState === 'broad_rotation') return 'tracked basket positive';
-    if (output.alts.rotationState === 'selective_rotation') return 'selective within tracked basket';
-    if (output.alts.rotationState === 'weak') return 'tracked basket weak';
-    if (output.alts.rotationState === 'no_rotation') return 'no tracked basket rotation';
+    return 'unavailable';
   }
   return output.alts.rotationState.replace(/_/g, ' ');
+}
+
+function formatAltScope(output: OverviewOutput): string {
+  const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string; universeName?: string; minVolumeUsd?: number };
+  if (altsMeta.sourceScope === 'broad_alt_perp_tape') {
+    return altsMeta.universeName ?? 'Bybit/Binance/OKX liquid USDT perp tape';
+  }
+  if (altsMeta.sourceScope === 'market_wide_top_n') return 'market-cap universe';
+  return 'broad alt perp tape unavailable; configured symbols are not used for production Alts breadth';
 }
 
 function formatEthUsd24hLabel(output: OverviewOutput): string {
@@ -457,8 +470,12 @@ export class OverviewFormatter {
     const derivativesMarker = marketMarker(output.derivatives.positioning);
     const rotationDisplay = formatAltRotation(output);
     const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string };
-    const altsHeader = altsMeta.sourceScope === 'tracked_basket'
-      ? 'tracked basket rotation'
+    const altsHeader = altsMeta.sourceScope === 'broad_alt_perp_tape' && (altsMeta as { canRenderBroadLabel?: boolean }).canRenderBroadLabel !== false && output.alts.rotationState !== 'unknown'
+      ? formatAltRotation(output)
+      : altsMeta.sourceScope === 'broad_alt_perp_tape'
+      ? 'unavailable'
+      : altsMeta.sourceScope === 'tracked_basket'
+      ? 'unavailable'
       : rotationDisplay;
     const derivativesHeader = derivativesMeta.sourceScope === 'cross_venue' && derivativesMeta.verificationStatus === 'confirmed_cross_venue'
       ? 'cross-venue neutral'
@@ -496,7 +513,7 @@ export class OverviewFormatter {
     ].filter((line) => line.trim() !== '•').slice(0, 3);
     const altsBullets = [
       `Breadth: ${compactComplete(output.alts.breadth, 80)}`,
-      `Rotation: ${rotationDisplay}`,
+      `Scope: ${formatAltScope(output)}`,
     ];
     const derivativesSuffix = derivativesMeta.sourceScope === 'single_venue'
       ? ' · Bybit-scoped'

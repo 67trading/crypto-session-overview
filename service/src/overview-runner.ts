@@ -19,7 +19,7 @@ import { computeDataStatus, buildSourceHealthSummary, type EnrichedCollectorQual
 import { computeWhatChanged, firstBriefBullets } from './brief-diff-engine.js';
 import { checkOutputInvariants, checkSourceAwareOutputInvariants, hasHardViolations } from './output-invariants.js';
 import { classifyMarketRegime } from './market-regime-classifier.js';
-import { analyzeAltsBreadth } from './alts-breadth-analyzer.js';
+import { unavailableBroadAltPerpTape } from './alts-breadth-analyzer.js';
 import { buildDerivativesNarrative } from './derivatives-narrative-builder.js';
 import { preprocessEvents } from './events-preprocessor.js';
 import { analyzeCrossMarket } from './cross-market-analyzer.js';
@@ -548,8 +548,9 @@ export class OverviewRunner {
           )
         : null;
 
-      // 5c. Analyze alts breadth from market snapshots
-      const altsBreadth = analyzeAltsBreadth(marketSnapshots);
+      // 5c. Production Alts breadth must come from a broad alt universe collector,
+      // not from configured run/watchlist symbols.
+      const altsBreadth = unavailableBroadAltPerpTape('broad alt perp tape collector did not provide data');
 
       // 5d. Build derivatives narrative from status enums
       let derivativesNarrative = buildDerivativesNarrative(derivativesContext);
@@ -662,6 +663,7 @@ export class OverviewRunner {
       }
 
       const crossVenueConsensus = buildCrossVenueConsensus(augmentedInput.normalizedVenueSnapshots ?? []);
+      const finalAltsBreadth = augmentedInput.altsBreadth ?? altsBreadth;
       derivativesNarrative = buildDerivativesNarrative(
         derivativesContext,
         ['BTCUSDT', 'ETHUSDT'],
@@ -686,7 +688,7 @@ export class OverviewRunner {
         dataStatus,
         btcLevels,
         derivativesNarrative,
-        altsBreadth,
+        altsBreadth: finalAltsBreadth,
         crossMarket,
         crossVenueConsensus,
         options: augmentedInput.optionsContext,
@@ -735,7 +737,7 @@ export class OverviewRunner {
             input: augmentedInput,
             precomputedRegime: confidenceAdjustedRegime,
             dataStatus,
-            altsBreadth,
+            altsBreadth: finalAltsBreadth,
             derivativesNarrative,
             crossMarket,
             previousOutput,
@@ -756,15 +758,16 @@ export class OverviewRunner {
         },
         alts: {
           ...llmResult.output.alts,
-          sourceScope: altsBreadth.sourceScope,
-          basketName: altsBreadth.basketName,
-          timeBasis: altsBreadth.timeBasis,
-          rotationState: altsBreadth.rotationState !== 'unknown'
-            ? altsBreadth.rotationState
-            : llmResult.output.alts.rotationState,
-          breadth: altsBreadth.totalTracked > 0
-            ? altsBreadth.breadthLabel
-            : llmResult.output.alts.breadth,
+          sourceScope: finalAltsBreadth.sourceScope,
+          basketName: finalAltsBreadth.basketName,
+          timeBasis: finalAltsBreadth.timeBasis,
+          universeName: finalAltsBreadth.universeName,
+          minVolumeUsd: finalAltsBreadth.minVolumeUsd,
+          venues: finalAltsBreadth.venues,
+          unavailableReason: finalAltsBreadth.unavailableReason,
+          canRenderBroadLabel: finalAltsBreadth.canRenderBroadLabel,
+          rotationState: finalAltsBreadth.rotationState,
+          breadth: finalAltsBreadth.breadthLabel,
         },
         derivatives: {
           ...llmResult.output.derivatives,

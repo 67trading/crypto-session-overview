@@ -57,6 +57,8 @@ export type SourceScope =
   | 'single_venue'
   | 'cross_venue'
   | 'tracked_basket'
+  | 'broad_alt_perp_tape'
+  | 'market_wide_top_n'
   | 'market_wide'
   | 'options_exchange'
   | 'announcement_source'
@@ -190,6 +192,13 @@ export type AltsBreadthSummary = {
   basketName?: string;
   symbols?: string[];
   timeBasis?: TimeBasis;
+  universeName?: string;
+  negativeCount?: number;
+  neutralCount?: number;
+  minVolumeUsd?: number;
+  venues?: Venue[];
+  unavailableReason?: string;
+  canRenderBroadLabel?: boolean;
 };
 
 export type DerivativesNarrativeSummary = {
