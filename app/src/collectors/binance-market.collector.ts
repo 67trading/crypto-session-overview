@@ -15,6 +15,7 @@ type BinanceTicker24h = {
 };
 type BinanceFunding = { fundingRate: string; fundingTime: number };
 type BinanceOpenInterest = { openInterest: string; time: number };
+type BinanceOpenInterestHist = { sumOpenInterest: string; sumOpenInterestValue: string; timestamp: number };
 type BinanceKline = [number, string, string, string, string, string, number];
 
 async function fetchJson<T>(url: URL): Promise<T> {
@@ -30,10 +31,11 @@ export class BinanceMarketCollector implements ContextCollector<NormalizedVenueS
     const instruments = getInstrumentsFor('price').filter((entry) => entry.venues.binance !== undefined);
     const results = await Promise.allSettled(instruments.map(async (entry) => {
       const symbol = entry.venues.binance!;
-      const [ticker, fundingRows, oi, daily, weekly, fourHour] = await Promise.all([
+      const [ticker, fundingRows, oi, oiHistory, daily, weekly, fourHour] = await Promise.all([
         this.fetchTicker(symbol),
         this.fetchFunding(symbol),
         this.fetchOpenInterest(symbol),
+        this.fetchOpenInterestHistory(symbol),
         this.fetchKlines(symbol, '1d', 3),
         this.fetchKlines(symbol, '1w', 3),
         this.fetchKlines(symbol, '4h', 10),
@@ -44,6 +46,11 @@ export class BinanceMarketCollector implements ContextCollector<NormalizedVenueS
       const latestFunding = fundingRows[0];
       const normalizedFunding = latestFunding !== undefined
         ? normalizeFundingPer8h(Number(latestFunding.fundingRate), 8)
+        : undefined;
+      const latestOiHistory = oiHistory.at(-1);
+      const priorOiHistory = oiHistory.at(-2);
+      const oiChange24hPct = latestOiHistory !== undefined && priorOiHistory !== undefined && Number(priorOiHistory.sumOpenInterest) !== 0
+        ? ((Number(latestOiHistory.sumOpenInterest) - Number(priorOiHistory.sumOpenInterest)) / Number(priorOiHistory.sumOpenInterest)) * 100
         : undefined;
       return {
         venue: 'binance',
@@ -79,7 +86,8 @@ export class BinanceMarketCollector implements ContextCollector<NormalizedVenueS
           rawValue: rawOi,
           rawUnit: 'base',
           ...(normalizedUsd !== undefined ? { normalizedUsd } : {}),
-          timeBasis: 'unknown',
+          ...(oiChange24hPct !== undefined ? { change24hPct: oiChange24hPct } : {}),
+          timeBasis: oiChange24hPct !== undefined ? 'utc_daily_candle' : 'unknown',
         },
         dataQuality: { missingFields: [], stale: false, errors: [] },
       } satisfies NormalizedVenueSnapshot;
@@ -106,6 +114,14 @@ export class BinanceMarketCollector implements ContextCollector<NormalizedVenueS
     const url = new URL(`${BASE}/fapi/v1/openInterest`);
     url.searchParams.set('symbol', symbol);
     return fetchJson<BinanceOpenInterest>(url);
+  }
+
+  private fetchOpenInterestHistory(symbol: string): Promise<BinanceOpenInterestHist[]> {
+    const url = new URL(`${BASE}/futures/data/openInterestHist`);
+    url.searchParams.set('symbol', symbol);
+    url.searchParams.set('period', '1d');
+    url.searchParams.set('limit', '2');
+    return fetchJson<BinanceOpenInterestHist[]>(url);
   }
 
   private fetchKlines(symbol: string, interval: '1d' | '1w' | '4h', limit: number): Promise<BinanceKline[]> {

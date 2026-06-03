@@ -129,4 +129,42 @@ describe('computeReportConfidence()', () => {
 
     expect(result.label).toBe('high');
   });
+
+  it('adds a soft penalty for published-only event timestamps', () => {
+    const derivatives: DerivativesNarrativeSummary = {
+      funding: 'neutral on 3/3 venues',
+      oi: 'stable on 3/3 venues',
+      positioning: 'no venue-confirmed stress signal',
+      sourceScope: 'cross_venue',
+      verificationStatus: 'confirmed_cross_venue',
+    };
+
+    const result = computeReportConfidence({
+      precomputedRegime: regime,
+      dataStatus: { price: 'fresh', events: 'fresh', derivatives: 'fresh', liquidations: 'unavailable' },
+      btcLevels,
+      derivativesNarrative: derivatives,
+      altsBreadth: { ...alts, sourceScope: 'market_wide', rotationState: 'selective_rotation' },
+      crossMarket: { ...crossMarket, ethUsd24hLabel: 'neutral', ethUsd24hChangePct: 0 },
+      events: {
+        ...events,
+        upcomingEvents: [{
+          title: 'Delisting',
+          time: '2026-06-03T08:00:00.000Z',
+          importance: 'high',
+          displayTimeType: 'publishedAt',
+          verificationStatus: 'confirmed_single_source',
+        }],
+      },
+      options: [{
+        symbol: 'BTC',
+        maxPainStrike: 75000,
+        expiryScope: 'front_expiry',
+        selectedMaxPain: { expiryDate: '07JUN26', maxPain: 75000, instrumentsIncluded: 10 },
+      }],
+    });
+
+    expect(result.ambiguityPenalty).toBeGreaterThan(0);
+    expect(result.reasons.join(' ')).toContain('announced time');
+  });
 });

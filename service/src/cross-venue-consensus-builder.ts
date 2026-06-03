@@ -51,7 +51,7 @@ function fundingDirection(rate: number | undefined): MetricDirection {
 }
 
 function oiDirection(changePct: number | undefined): MetricDirection {
-  if (changePct === undefined) return 'neutral';
+  if (changePct === undefined) return 'unavailable';
   if (changePct > 5) return 'bullish';
   if (changePct < -1) return 'bearish';
   return 'neutral';
@@ -141,12 +141,11 @@ export function buildCrossVenueConsensus(snapshots: NormalizedVenueSnapshot[]): 
       const snap = btc.find((item) => item.venue === venue);
       const value = snap?.openInterest?.change24hPct;
       const fallbackValue = snap?.openInterest?.normalizedUsd;
-      const hasOi = value !== undefined || fallbackValue !== undefined;
       return {
         venue,
         ...(value !== undefined ? { value } : fallbackValue !== undefined ? { value: fallbackValue } : {}),
-        direction: hasOi ? oiDirection(value) : 'unavailable',
-        reason: value !== undefined ? `${round2(value)}% OI 24h` : fallbackValue !== undefined ? 'OI present without 24h change' : 'OI unavailable',
+        direction: oiDirection(value),
+        reason: value !== undefined ? `${round2(value)}% OI 24h` : fallbackValue !== undefined ? 'OI present without change window' : 'OI unavailable',
       };
     }),
   });

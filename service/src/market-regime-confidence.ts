@@ -2,6 +2,7 @@ import type {
   AltsBreadthSummary,
   ConfidenceBreakdown,
   CrossMarketSummary,
+  CrossVenueConsensus,
   DataStatus,
   DerivativesNarrativeSummary,
   HtfLevelsSnapshot,
@@ -37,7 +38,18 @@ function hasAmbiguousEventTime(events: PrecomputedEvents): boolean {
   return events.upcomingEvents.some((event) =>
     event.displayTimeType === undefined
     || event.displayTimeType === 'detectedAt'
+    || event.displayTimeType === 'publishedAt'
     || event.verificationStatus === 'ambiguous'
+  );
+}
+
+function consensusCoverage(consensus: CrossVenueConsensus | undefined): number | undefined {
+  if (consensus === undefined) return undefined;
+  return clamp01(
+    0.25 * consensus.price.coverageScore
+    + 0.25 * consensus.derivatives.funding.coverageScore
+    + 0.25 * consensus.derivatives.openInterest.coverageScore
+    + 0.25 * consensus.derivatives.confidenceContribution,
   );
 }
 
@@ -56,6 +68,7 @@ export function computeReportConfidence(params: {
   derivativesNarrative: DerivativesNarrativeSummary;
   altsBreadth: AltsBreadthSummary;
   crossMarket: CrossMarketSummary;
+  crossVenueConsensus?: CrossVenueConsensus | undefined;
   options?: OptionsContext[] | undefined;
   events: PrecomputedEvents;
 }): ConfidenceBreakdown {
@@ -64,14 +77,16 @@ export function computeReportConfidence(params: {
 
   let dataCoverage = 0.35;
   if (params.dataStatus.price === 'fresh') dataCoverage += 0.25;
-  if (params.dataStatus.derivatives === 'fresh') dataCoverage += 0.15;
+  const crossVenueCoverage = consensusCoverage(params.crossVenueConsensus);
+  if (params.dataStatus.derivatives === 'fresh') dataCoverage += crossVenueCoverage !== undefined ? 0.15 * crossVenueCoverage : 0.15;
   if (params.dataStatus.events === 'fresh') dataCoverage += 0.1;
   if (hasKnownOptionsExpiry(params.options)) dataCoverage += 0.1;
   dataCoverage = clamp01(dataCoverage);
 
   const derivativeCrossVenue = params.derivativesNarrative.sourceScope === 'cross_venue'
     && params.derivativesNarrative.verificationStatus === 'confirmed_cross_venue';
-  const venueAgreement = derivativeCrossVenue ? 0.8 : 0.45;
+  const venueAgreement = params.crossVenueConsensus?.derivatives.confidenceContribution
+    ?? (derivativeCrossVenue ? 0.8 : 0.45);
   if (!derivativeCrossVenue) reasons.push('Derivatives are source-scoped, so high confidence is capped.');
 
   let ambiguityPenalty = 0;
@@ -81,7 +96,7 @@ export function computeReportConfidence(params: {
   }
   if (hasAmbiguousEventTime(params.events)) {
     ambiguityPenalty += 0.15;
-    reasons.push('At least one event uses detected/announced time rather than parsed effective time.');
+    reasons.push('At least one event uses detected/announced time rather than parsed effective/trading-end time.');
   }
   if (params.altsBreadth.sourceScope === 'tracked_basket' && params.altsBreadth.rotationState === 'broad_rotation') {
     ambiguityPenalty += 0.1;

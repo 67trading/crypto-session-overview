@@ -688,6 +688,7 @@ export class OverviewRunner {
         derivativesNarrative,
         altsBreadth,
         crossMarket,
+        crossVenueConsensus,
         options: augmentedInput.optionsContext,
         events: precomputedEvents,
       });

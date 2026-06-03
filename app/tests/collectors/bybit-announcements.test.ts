@@ -40,4 +40,26 @@ describe('BybitAnnouncementsCollector', () => {
     expect(result.status).toBe('success');
     expect(result.itemCount).toBe(1);
   });
+
+  it('extracts delisting trading-end time from Bybit announcement wording', async () => {
+    const client = {
+      getAnnouncements: vi.fn().mockResolvedValue([
+        {
+          id: '456',
+          title: 'Delisting of ELON and VINU',
+          description: 'Trading of ELONUSDT and VINUUSDT will no longer be supported after June 10, 2026, 8AM UTC.',
+          publishTime: Date.UTC(2026, 5, 3, 8, 0, 1),
+          tags: ['delisting'],
+          url: 'https://bybit.com/456',
+        },
+      ]),
+    };
+    const collector = new BybitAnnouncementsCollector(client as never);
+    const result = await collector.collect(ctx);
+
+    expect(result.data?.[0]?.eventType).toBe('exchange_delisting');
+    expect(result.data?.[0]?.publishedAt).toBe('2026-06-03T08:00:01.000Z');
+    expect(result.data?.[0]?.tradingEndsAt).toBe('2026-06-10T08:00:00.000Z');
+    expect(result.data?.[0]?.scheduledTime).toBe('2026-06-10T08:00:00.000Z');
+  });
 });

@@ -96,18 +96,25 @@ export class BybitAnnouncementsCollector implements EventCollector {
 
 function extractTradingEndsAt(text: string): string | undefined {
   const normalized = text.replace(/\s+/g, ' ');
-  const pattern = /\b(?:trading|deposits?|withdrawals?)\s+(?:will\s+)?(?:end|cease|close|be suspended|be terminated)[^A-Za-z0-9]{0,40}(?:on\s+)?([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})[, ]+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(?:AM|PM)?\s*(?:UTC)?/i;
-  const match = pattern.exec(normalized)
-    ?? /\b([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})[, ]+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(?:UTC)\b/i.exec(normalized);
-  if (match === null) return undefined;
+  const tradingEndPatterns = [
+    /\btrading\s+(?:of\s+.+?\s+)?will\s+no\s+longer\s+be\s+supported\s+after\s+([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})[, ]+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?\s*(?:UTC)?/i,
+    /\btrading\s+(?:will\s+)?(?:end|cease|close)\s+(?:on\s+)?([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})[, ]+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?\s*(?:UTC)?/i,
+    /\bwill\s+be\s+delisted\s+on\s+([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})[, ]+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?\s*(?:UTC)?/i,
+  ];
+  const match = tradingEndPatterns
+    .map((pattern) => pattern.exec(normalized))
+    .find((candidate): candidate is RegExpExecArray => candidate !== null);
+  if (match === undefined) return undefined;
 
   const month = MONTHS[match[1]!.toLowerCase()];
   const day = Number(match[2]);
   const year = Number(match[3]);
   const hour = Number(match[4]);
   const minute = match[5] !== undefined ? Number(match[5]) : 0;
+  const meridiem = match[6]?.toUpperCase();
   if (month === undefined || !Number.isFinite(day) || !Number.isFinite(year) || !Number.isFinite(hour) || !Number.isFinite(minute)) return undefined;
 
-  const date = new Date(Date.UTC(year, month, day, hour, minute));
+  const normalizedHour = meridiem === 'PM' && hour < 12 ? hour + 12 : meridiem === 'AM' && hour === 12 ? 0 : hour;
+  const date = new Date(Date.UTC(year, month, day, normalizedHour, minute));
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }

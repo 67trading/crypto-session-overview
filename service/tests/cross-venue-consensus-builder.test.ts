@@ -64,6 +64,22 @@ describe('buildCrossVenueConsensus()', () => {
     expect(result.derivatives.combinedLabel).toBe('single_source');
   });
 
+  it('does not treat present-only OI snapshots as neutral trend', () => {
+    const result = buildCrossVenueConsensus([{
+      ...btcSnapshot('binance', { priceChange: -3, funding: 0.0001 }),
+      openInterest: {
+        rawValue: 100,
+        rawUnit: 'base',
+        normalizedUsd: 6600000,
+        timeBasis: 'unknown',
+      },
+    }]);
+
+    expect(result.derivatives.openInterest.direction).toBe('unavailable');
+    expect(result.derivatives.openInterest.verificationStatus).toBe('unavailable');
+    expect(result.derivatives.openInterest.perVenue.find((row) => row.venue === 'binance')?.reason).toBe('OI present without change window');
+  });
+
   it('flags cross-venue conflicts as ambiguous', () => {
     const result = buildCrossVenueConsensus([
       btcSnapshot('bybit', { priceChange: -3, funding: 0.001, oiChange: 6 }),
