@@ -228,6 +228,14 @@ function eventMarker(importance: string): string {
   return '⚪';
 }
 
+function eventTimePrefix(displayTimeType: string | undefined): string {
+  if (displayTimeType === 'tradingEndsAt') return 'trading ends';
+  if (displayTimeType === 'effectiveAt') return 'effective';
+  if (displayTimeType === 'publishedAt') return 'announced';
+  if (displayTimeType === 'detectedAt') return 'detected';
+  return '';
+}
+
 function isInitialRead(output: OverviewOutput): boolean {
   return output.whatChanged.some((bullet) => bullet.toLowerCase().includes('initial reading')
     || bullet.toLowerCase().includes('no previous brief'));
@@ -424,10 +432,20 @@ export class OverviewFormatter {
     const regimeDisplay = formatRegimeForTelegram(output);
     const regimeMarker = marketMarker(output.marketRegime);
     const btcMarker = marketMarker(output.btc.structure);
-    const ethMarker = marketMarker(output.eth.vsbtc);
+    const ethMeta = output.eth as OverviewOutput['eth'] & { headerLabel?: string; ethUsd24hLabel?: string };
+    const ethHeader = ethMeta.headerLabel ?? 'ETH context';
+    const ethMarker = marketMarker(`${output.eth.vsbtc} ${ethHeader}`);
     const altsMarker = marketMarker(`${output.alts.rotationState} ${output.alts.breadth}`);
+    const derivativesMeta = output.derivatives as OverviewOutput['derivatives'] & { sourceScope?: string };
     const derivativesMarker = marketMarker(output.derivatives.positioning);
     const rotationDisplay = output.alts.rotationState.replace(/_/g, ' ');
+    const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string };
+    const altsHeader = altsMeta.sourceScope === 'tracked_basket'
+      ? 'tracked basket rotation'
+      : rotationDisplay;
+    const derivativesHeader = derivativesMeta.sourceScope === 'single_venue'
+      ? 'Bybit-scoped neutral'
+      : output.derivatives.positioning.toLowerCase().includes('neutral') || output.derivatives.positioning.toLowerCase().includes('balanced') ? 'neutral' : 'positioning';
     const btcLevels = formatHtmlLevels(output.btc.keyLevels, 2);
     const ethLevels = formatHtmlLevels(output.eth.keyLevels, 2);
     const highImpactEvents = output.events.upcoming.filter((ev) =>
@@ -435,7 +453,7 @@ export class OverviewFormatter {
     );
     const eventLines = highImpactEvents.length > 0
       ? highImpactEvents.slice(0, 3).map((ev) =>
-          `${eventMarker(ev.importance)} ${escapeHtml(compactComplete(ev.title, 80))} · ${code(compactComplete(ev.time, 42))}`
+          `${eventMarker(ev.importance)} ${escapeHtml(compactComplete(ev.title, 80))} · ${escapeHtml(eventTimePrefix((ev as { displayTimeType?: string }).displayTimeType))}${eventTimePrefix((ev as { displayTimeType?: string }).displayTimeType) === '' ? '' : ' '}${code(compactComplete(ev.time, 42))}`
         )
       : output.events.upcoming.length > 0 || output.events.summary.trim() !== ''
         ? ['🔵 No high-impact BTC/ETH event confirmed']
@@ -458,11 +476,15 @@ export class OverviewFormatter {
       `Breadth: ${compactComplete(output.alts.breadth, 80)}`,
       `Rotation: ${rotationDisplay}`,
     ];
+    const derivativesSuffix = derivativesMeta.sourceScope === 'single_venue' ? ' · Bybit-scoped' : '';
     const derivativesBullets = [
-      `Funding: ${compactComplete(output.derivatives.funding, 60)}`,
-      `OI: ${compactComplete(output.derivatives.oi, 60)}`,
-      `Positioning: ${compactComplete(output.derivatives.positioning, 60)}`,
+      `Funding: ${compactComplete(output.derivatives.funding, 52)}${derivativesSuffix}`,
+      `OI: ${compactComplete(output.derivatives.oi, 52)}${derivativesSuffix}`,
+      derivativesMeta.sourceScope === 'single_venue'
+        ? `Positioning: ${compactComplete(output.derivatives.positioning, 42)}; broader venues not verified`
+        : `Positioning: ${compactComplete(output.derivatives.positioning, 60)}`,
     ];
+    const confidenceReason = output.confidenceBreakdown?.reasons[0];
     const liquidityLines = compactHtmlLiquidityLines(output);
 
     const lines: string[] = [
@@ -470,6 +492,7 @@ export class OverviewFormatter {
       '',
       `${b('Regime:')} ${regimeMarker} ${escapeHtml(regimeDisplay)}`,
       `${b('Confidence:')} ${confidenceMarker(output.briefConfidence)} ${escapeHtml(output.briefConfidence)}`,
+      ...(confidenceReason !== undefined ? [`${b('Reason:')} ${escapeHtml(compactComplete(confidenceReason, 105))}`] : []),
       '',
       b('📌 Changed'),
       ...(changed.length > 0 ? changed : ['⚪ Initial session read']),
@@ -477,13 +500,13 @@ export class OverviewFormatter {
       `${b(`₿ BTC · ${btcMarker} ${output.btc.structure}`)}`,
       ...btcBullets,
       '',
-      `${b(`Ξ ETH · ${ethMarker} relative strength`)}`,
+      `${b(`Ξ ETH · ${ethMarker} ${ethHeader}`)}`,
       ...ethBullets,
       '',
-      `${b(`🌊 Alts · ${altsMarker} ${rotationDisplay}`)}`,
+      `${b(`🌊 Alts · ${altsMarker} ${altsHeader}`)}`,
       ...altsBullets.map((line) => `• ${escapeHtml(line)}`),
       '',
-      `${b(`📊 Derivs · ${derivativesMarker} ${output.derivatives.positioning.toLowerCase().includes('neutral') || output.derivatives.positioning.toLowerCase().includes('balanced') ? 'neutral' : 'positioning'}`)}`,
+      `${b(`📊 Derivs · ${derivativesMarker} ${derivativesHeader}`)}`,
       ...derivativesBullets.map((line) => `• ${escapeHtml(line)}`),
     ];
 
@@ -498,11 +521,15 @@ export class OverviewFormatter {
       '',
       b('📅 Events'),
       ...eventLines,
+      ...highImpactEvents.slice(0, 1).flatMap((ev) => {
+        const detail = (ev as { detail?: string }).detail;
+        return detail !== undefined ? [`• ${escapeHtml(compactComplete(detail, 85))}`] : [];
+      }),
       '',
       b('⚡ Scenarios'),
-      `Reclaim: ${escapeHtml(compactComplete(output.scenarios.reclaim, 95))}`,
-      `Reject: ${escapeHtml(compactComplete(output.scenarios.rejection, 95))}`,
-      `Chop: ${escapeHtml(compactComplete(output.scenarios.chop, 95))}`,
+      `Reclaim: ${escapeHtml(output.scenarios.reclaim)}`,
+      `Reject: ${escapeHtml(output.scenarios.rejection)}`,
+      `Chop: ${escapeHtml(output.scenarios.chop)}`,
       '',
       escapeHtml(COMPACT_FOOTER_NOTE),
     );

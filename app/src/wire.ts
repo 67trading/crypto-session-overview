@@ -9,6 +9,9 @@ import { CoinMarketCalCollector } from './collectors/coinmarketcal.collector.js'
 import { BinanceAnnouncementsCollector } from './collectors/binance-announcements.collector.js';
 import { MobulaUnlocksCollector } from './collectors/mobula-unlocks.collector.js';
 import { DeribitOptionsCollector } from './collectors/deribit-options.collector.js';
+import { BinanceMarketCollector } from './collectors/binance-market.collector.js';
+import { BybitVenueSnapshotCollector } from './collectors/bybit-venue-snapshot.collector.js';
+import { OkxMarketCollector } from './collectors/okx-market.collector.js';
 import { SoSoValueEtfCollector } from './collectors/sosovalue-etf.collector.js';
 import { CoinMarketCapEtfCollector } from './collectors/coinmarketcap-etf.collector.js';
 import { IssuerHoldingsProxyCollector } from './collectors/issuer-holdings-proxy.collector.js';
@@ -34,6 +37,7 @@ import {
   mergeOptionsContext,
   mergeEtfFlowContext,
   mergeBreadthContext,
+  mergeNormalizedVenueSnapshots,
   contextCollectorEntry,
 } from '../../service/src/context-merge.js';
 import type { AppConfig } from './config.js';
@@ -81,6 +85,9 @@ export function wire(config: AppConfig, logger: LoggerLike): SessionOverviewServ
 
   // Context collectors — always-on (public), or gated on API keys (FRED, BEA)
   const contextCollectors: ContextCollectorEntry[] = [
+    contextCollectorEntry(new BybitVenueSnapshotCollector(bybitClient), mergeNormalizedVenueSnapshots),
+    contextCollectorEntry(new BinanceMarketCollector(), mergeNormalizedVenueSnapshots),
+    contextCollectorEntry(new OkxMarketCollector(), mergeNormalizedVenueSnapshots),
     contextCollectorEntry(new DefiLlamaStablecoinsCollector(), mergeStablecoinContext),
     contextCollectorEntry(new DefiLlamaChainsCollector(), mergeChainFlowContext),
     contextCollectorEntry(new DeribitOptionsCollector(), mergeOptionsContext),

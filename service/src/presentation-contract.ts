@@ -67,7 +67,11 @@ export function buildPresentationContext(input: OverviewInput): PresentationCont
   if (hasDeribitOptions && input.optionsContext !== undefined) {
     for (const option of input.optionsContext) {
       const parts: string[] = [];
-      if (option.maxPainStrike !== undefined) parts.push(`max pain ${option.maxPainStrike}`);
+      if (option.selectedMaxPain !== undefined) {
+        parts.push(`max pain ${option.selectedMaxPain.maxPain} for ${option.expiryScope ?? 'unknown'} ${option.selectedMaxPain.expiryDate}`);
+      } else if (option.maxPainStrike !== undefined) {
+        parts.push(`max pain ${option.maxPainStrike} with expiry scope unclear`);
+      }
       if (option.putCallRatio !== undefined) parts.push(`put/call ${option.putCallRatio}`);
       if (option.impliedVol24h !== undefined) parts.push(`ATM IV ${option.impliedVol24h}%`);
       if (parts.length > 0) optionsBullets.push(`Deribit ${option.symbol} options context: ${parts.join(', ')}.`);

@@ -44,6 +44,11 @@ export function analyzeCrossMarket(snapshots: OverviewMarketSnapshot[]): CrossMa
 
   // ETH/BTC ratio trend (7-day window)
   let ethBtcTrendLabel = 'data unavailable';
+  let ethBtc7dChangePct: number | undefined;
+  let ethUsd24hChangePct: number | undefined;
+  let ethVsBtc24hChangePct: number | undefined;
+  let ethUsd24hLabel: CrossMarketSummary['ethUsd24hLabel'] = 'unknown';
+  let ethHeaderLabel = 'ETH context unavailable';
   let dominanceSignal: CrossMarketSummary['dominanceSignal'] = 'unknown';
 
   if (btc !== undefined && eth !== undefined) {
@@ -52,6 +57,7 @@ export function analyzeCrossMarket(snapshots: OverviewMarketSnapshot[]): CrossMa
 
     if (currentRatio !== null && pastRatio !== null) {
       const ratioChange = (currentRatio - pastRatio) / pastRatio;
+      ethBtc7dChangePct = Number((ratioChange * 100).toFixed(1));
       const trend = ratioChange > ETH_BTC_TREND_THRESHOLD ? 'rising'
         : ratioChange < -ETH_BTC_TREND_THRESHOLD ? 'falling'
         : 'sideways';
@@ -66,6 +72,16 @@ export function analyzeCrossMarket(snapshots: OverviewMarketSnapshot[]): CrossMa
 
   // Major relative strength vs BTC
   const btcReturn = btc !== undefined ? computeDailyReturn(btc.candles.daily) : null;
+  if (eth !== undefined) {
+    const ethReturn = computeDailyReturn(eth.candles.daily);
+    if (ethReturn !== null) {
+      ethUsd24hChangePct = Number((ethReturn * 100).toFixed(1));
+      ethUsd24hLabel = ethReturn < -0.01 ? 'weak' : ethReturn > 0.01 ? 'strong' : 'neutral';
+      if (btcReturn !== null) {
+        ethVsBtc24hChangePct = Number(((ethReturn - btcReturn) * 100).toFixed(1));
+      }
+    }
+  }
 
   type RsEntry = { symbol: string; vsbtc: number; classification: string };
   const rsEntries: RsEntry[] = [];
@@ -117,8 +133,23 @@ export function analyzeCrossMarket(snapshots: OverviewMarketSnapshot[]): CrossMa
     ? 'Dominance mixed — selective relative strength across majors'
     : 'Dominance data unavailable';
 
+  if (ethBtc7dChangePct !== undefined && ethBtc7dChangePct > 0 && ethUsd24hLabel === 'weak') {
+    ethHeaderLabel = 'ETH/BTC 7d resilience, USD weak';
+  } else if (ethBtc7dChangePct !== undefined && ethBtc7dChangePct > 0) {
+    ethHeaderLabel = 'ETH/BTC 7d resilience';
+  } else if (ethVsBtc24hChangePct !== undefined && ethVsBtc24hChangePct < -1) {
+    ethHeaderLabel = 'ETH underperforming';
+  } else if (ethUsd24hLabel !== 'unknown') {
+    ethHeaderLabel = ethUsd24hLabel === 'strong' ? 'ETH USD strength' : ethUsd24hLabel === 'weak' ? 'ETH USD weak' : 'ETH neutral';
+  }
+
   return {
     ethBtcTrendLabel,
+    ethHeaderLabel,
+    ...(ethBtc7dChangePct !== undefined ? { ethBtc7dChangePct } : {}),
+    ...(ethUsd24hChangePct !== undefined ? { ethUsd24hChangePct } : {}),
+    ...(ethVsBtc24hChangePct !== undefined ? { ethVsBtc24hChangePct } : {}),
+    ethUsd24hLabel,
     dominanceSignal,
     dominanceLabel,
     topOutperformers,

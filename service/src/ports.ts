@@ -52,6 +52,133 @@ export type PrecomputedRegime = {
   briefConfidence: 'low' | 'medium' | 'high';
 };
 
+export type Venue = 'bybit' | 'binance' | 'okx' | 'deribit';
+export type SourceScope =
+  | 'single_venue'
+  | 'cross_venue'
+  | 'tracked_basket'
+  | 'market_wide'
+  | 'options_exchange'
+  | 'announcement_source'
+  | 'unknown';
+export type TimeBasis =
+  | 'rolling_24h'
+  | 'utc_daily_candle'
+  | 'utc_weekly_candle'
+  | 'seven_day_ratio'
+  | 'session_asia'
+  | 'four_hour_candle'
+  | 'unknown';
+export type VerificationStatus =
+  | 'confirmed_cross_venue'
+  | 'confirmed_single_source'
+  | 'source_scoped'
+  | 'ambiguous'
+  | 'unavailable'
+  | 'stale';
+
+export type ConfidenceBreakdown = {
+  signalClarity: number;
+  dataCoverage: number;
+  venueAgreement: number;
+  ambiguityPenalty: number;
+  finalScore: number;
+  label: 'low' | 'medium' | 'high';
+  reasons: string[];
+};
+
+export type NormalizedVenueSnapshot = {
+  venue: Exclude<Venue, 'deribit'>;
+  asset: 'BTC' | 'ETH' | string;
+  canonicalInstrument: string;
+  venueInstrument: string;
+  instrumentType: 'spot' | 'linear_perp' | 'inverse_perp';
+  quote: 'USDT' | 'USD' | 'USDC';
+  observedAt: string;
+  ticker24h?: {
+    last: number;
+    open24h?: number;
+    high24h?: number;
+    low24h?: number;
+    change24hPct?: number;
+    sourceScope: 'single_venue';
+    timeBasis: 'rolling_24h';
+  };
+  candles?: Array<{
+    timeframe: '1h' | '4h' | '1d' | '1w';
+    openTime: string;
+    closeTime?: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    closed: boolean;
+    timeBasis: TimeBasis;
+  }>;
+  funding?: {
+    rate: number;
+    intervalHours?: number;
+    normalizedPer8h?: number;
+    nextFundingTime?: string;
+    timeBasis: 'unknown';
+  };
+  openInterest?: {
+    rawValue: number;
+    rawUnit: 'contracts' | 'base' | 'quote' | 'usd' | 'unknown';
+    normalizedUsd?: number;
+    change24hPct?: number;
+    timeBasis: 'rolling_24h' | 'utc_daily_candle' | 'unknown';
+  };
+  dataQuality: {
+    missingFields: string[];
+    stale: boolean;
+    errors: string[];
+  };
+};
+
+export type MetricDirection = 'bullish' | 'bearish' | 'neutral' | 'mixed' | 'unavailable';
+
+export type VenueMetricConsensus = {
+  metric: 'price_24h' | 'btc_regime' | 'funding' | 'open_interest' | 'eth_btc_ratio' | 'alt_breadth';
+  asset?: 'BTC' | 'ETH';
+  venuesRequired: Venue[];
+  venuesAvailable: Venue[];
+  coverageScore: number;
+  agreementScore: number;
+  direction: MetricDirection;
+  perVenue: Array<{
+    venue: Venue;
+    value?: number;
+    direction: MetricDirection;
+    verificationStatus: VerificationStatus;
+    reason?: string;
+  }>;
+  conflicts: Array<{
+    venue: Venue;
+    direction: MetricDirection;
+    reason: string;
+  }>;
+  verificationStatus: VerificationStatus;
+};
+
+export type DerivativesConsensus = {
+  funding: VenueMetricConsensus;
+  openInterest: VenueMetricConsensus;
+  combinedLabel:
+    | 'cross_venue_neutral'
+    | 'cross_venue_bullish'
+    | 'cross_venue_bearish'
+    | 'mixed'
+    | 'single_source'
+    | 'unavailable';
+  confidenceContribution: number;
+};
+
+export type CrossVenueConsensus = {
+  price: VenueMetricConsensus;
+  derivatives: DerivativesConsensus;
+};
+
 export type AltsBreadthSummary = {
   breadthPercent: number;
   positiveCount: number;
@@ -59,16 +186,29 @@ export type AltsBreadthSummary = {
   breadthLabel: string;
   rotationState: 'broad_rotation' | 'selective_rotation' | 'no_rotation' | 'weak' | 'unknown';
   outperformingBtcPct?: number;
+  sourceScope?: SourceScope;
+  basketName?: string;
+  symbols?: string[];
+  timeBasis?: TimeBasis;
 };
 
 export type DerivativesNarrativeSummary = {
   funding: string;
   oi: string;
   positioning: string;
+  sourceScope?: SourceScope;
+  venuesAvailable?: Venue[];
+  verificationStatus?: VerificationStatus;
+  positioningBasis?: 'funding_only' | 'funding_and_oi' | 'funding_oi_longshort' | 'unknown';
 };
 
 export type CrossMarketSummary = {
   ethBtcTrendLabel: string;
+  ethHeaderLabel?: string;
+  ethBtc7dChangePct?: number;
+  ethUsd24hChangePct?: number;
+  ethVsBtc24hChangePct?: number;
+  ethUsd24hLabel?: 'strong' | 'weak' | 'neutral' | 'unknown';
   dominanceSignal: 'rising' | 'falling' | 'mixed' | 'unknown';
   dominanceLabel: string;
   topOutperformers: string[];
@@ -80,6 +220,9 @@ export type PrecomputedEvents = {
     title: string;
     time: string;
     importance: 'critical' | 'high' | 'medium' | 'low';
+    displayTimeType?: 'tradingEndsAt' | 'effectiveAt' | 'publishedAt' | 'detectedAt' | 'scheduledTime';
+    detail?: string;
+    verificationStatus?: VerificationStatus;
   }[];
   totalDeduped: number;
   sessionFiltered: number;
@@ -163,6 +306,23 @@ export type OptionsContext = {
   putCallRatio?: number;
   impliedVol24h?: number;
   maxPainStrike?: number;
+  source?: 'deribit';
+  currency?: 'BTC' | 'ETH';
+  selectedMaxPain?: {
+    expiryDate: string;
+    maxPain: number;
+    instrumentsIncluded: number;
+    openInterestTotal?: number;
+  };
+  allExpiries?: {
+    expiryDate: string;
+    maxPain: number;
+    instrumentsIncluded: number;
+    openInterestTotal?: number;
+  }[];
+  expiryScope?: 'front_expiry' | 'weekly' | 'monthly' | 'all_expiries' | 'unknown';
+  computedAt?: string;
+  verificationStatus?: VerificationStatus;
 };
 
 export type MacroRatesContext = {
@@ -255,6 +415,9 @@ export type OverviewInput = {
   chainFlowContext?: ChainFlowContext;
   sourceHealth?: SourceHealthSummary;
   presentationContext?: PresentationContext;
+  confidenceBreakdown?: ConfidenceBreakdown;
+  normalizedVenueSnapshots?: NormalizedVenueSnapshot[];
+  crossVenueConsensus?: CrossVenueConsensus;
 };
 
 // ─── Collection ports ──────────────────────────────────────────────────────────

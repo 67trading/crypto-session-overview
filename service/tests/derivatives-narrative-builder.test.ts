@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildDerivativesNarrative } from '../src/derivatives-narrative-builder.js';
-import type { DerivativesContext } from '../src/ports.js';
+import type { DerivativesConsensus, DerivativesContext } from '../src/ports.js';
 
 function makeCtx(
   funding: DerivativesContext['fundingStatus'],
@@ -126,5 +126,47 @@ describe('buildDerivativesNarrative()', () => {
     expect(result).toHaveProperty('funding');
     expect(result).toHaveProperty('oi');
     expect(result).toHaveProperty('positioning');
+  });
+
+  it('uses cross-venue derivatives consensus when available', () => {
+    const consensus: DerivativesConsensus = {
+      combinedLabel: 'cross_venue_neutral',
+      confidenceContribution: 1,
+      funding: {
+        metric: 'funding',
+        asset: 'BTC',
+        venuesRequired: ['bybit', 'binance', 'okx'],
+        venuesAvailable: ['bybit', 'binance', 'okx'],
+        coverageScore: 1,
+        agreementScore: 1,
+        direction: 'neutral',
+        perVenue: [],
+        conflicts: [],
+        verificationStatus: 'confirmed_cross_venue',
+      },
+      openInterest: {
+        metric: 'open_interest',
+        asset: 'BTC',
+        venuesRequired: ['bybit', 'binance', 'okx'],
+        venuesAvailable: ['bybit', 'binance', 'okx'],
+        coverageScore: 1,
+        agreementScore: 1,
+        direction: 'neutral',
+        perVenue: [],
+        conflicts: [],
+        verificationStatus: 'confirmed_cross_venue',
+      },
+    };
+
+    const result = buildDerivativesNarrative(
+      { BTCUSDT: makeCtx('positive_extreme', 'rising_fast', 'long_heavy') },
+      ['BTCUSDT', 'ETHUSDT'],
+      consensus,
+    );
+
+    expect(result.funding).toBe('neutral on 3/3 venues');
+    expect(result.oi).toBe('neutral on 3/3 venues');
+    expect(result.sourceScope).toBe('cross_venue');
+    expect(result.verificationStatus).toBe('confirmed_cross_venue');
   });
 });

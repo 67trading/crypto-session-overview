@@ -11,6 +11,12 @@ interface DeribitSummary {
 }
 
 interface DeribitResponse { result?: DeribitSummary[] }
+type MaxPainByExpiry = {
+  expiryDate: string;
+  maxPain: number;
+  instrumentsIncluded: number;
+  openInterestTotal?: number;
+};
 
 function parseInstrument(name: string): { expiry: string; strike: number; type: 'C' | 'P' } | null {
   const parts = name.split('-');
@@ -82,6 +88,34 @@ function computeMaxPain(summaries: DeribitSummary[]): number | undefined {
   return maxPainStrike;
 }
 
+function computeMaxPainByExpiry(summaries: DeribitSummary[]): MaxPainByExpiry[] {
+  const instruments = summaries
+    .map((s) => ({ ...s, parsed: parseInstrument(s.instrument_name) }))
+    .filter((s): s is typeof s & { parsed: NonNullable<typeof s.parsed> } => s.parsed !== null);
+  const byExpiry = new Map<string, typeof instruments>();
+  for (const instrument of instruments) {
+    const entries = byExpiry.get(instrument.parsed.expiry) ?? [];
+    entries.push(instrument);
+    byExpiry.set(instrument.parsed.expiry, entries);
+  }
+
+  return [...byExpiry.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map((entry): MaxPainByExpiry | undefined => {
+      const [expiryDate, expiryInstruments] = entry;
+      const maxPain = computeMaxPain(expiryInstruments);
+      if (maxPain === undefined) return undefined;
+      const openInterestTotal = expiryInstruments.reduce((sum, instrument) => sum + instrument.open_interest, 0);
+      return {
+        expiryDate,
+        maxPain,
+        instrumentsIncluded: expiryInstruments.length,
+        openInterestTotal,
+      };
+    })
+    .filter((entry): entry is MaxPainByExpiry => entry !== undefined);
+}
+
 export class DeribitOptionsCollector implements ContextCollector<OptionsContext[]> {
   readonly sourceName = 'deribit-options';
 
@@ -113,13 +147,22 @@ export class DeribitOptionsCollector implements ContextCollector<OptionsContext[
 
     const putCallRatio = computePcr(summaries);
     const impliedVol24h = computeAtmIv(summaries);
-    const maxPainStrike = computeMaxPain(summaries);
+    const allExpiries = computeMaxPainByExpiry(summaries);
+    const selectedMaxPain = allExpiries[0];
+    const maxPainStrike = selectedMaxPain?.maxPain ?? computeMaxPain(summaries);
 
     return {
       symbol: currency,
+      source: 'deribit',
+      currency,
       ...(putCallRatio !== undefined ? { putCallRatio } : {}),
       ...(impliedVol24h !== undefined ? { impliedVol24h } : {}),
       ...(maxPainStrike !== undefined ? { maxPainStrike } : {}),
+      ...(selectedMaxPain !== undefined ? { selectedMaxPain } : {}),
+      ...(allExpiries.length > 0 ? { allExpiries } : {}),
+      expiryScope: selectedMaxPain !== undefined ? 'front_expiry' : 'unknown',
+      computedAt: new Date().toISOString(),
+      verificationStatus: selectedMaxPain !== undefined ? 'confirmed_single_source' : 'ambiguous',
     };
   }
 }

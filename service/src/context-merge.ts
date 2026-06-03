@@ -9,6 +9,7 @@ import type {
   StablecoinContext,
   ChainFlowContext,
   AltsBreadthSummary,
+  NormalizedVenueSnapshot,
 } from './ports.js';
 import type { ContextCollectorEntry } from './service-types.js';
 
@@ -101,6 +102,20 @@ export function mergeBreadthContext(
   if (existing === undefined) return { ...input, altsBreadth: result.data };
   // New data fills in additional fields; existing fields take priority
   return { ...input, altsBreadth: { ...result.data, ...existing } };
+}
+
+export function mergeNormalizedVenueSnapshots(
+  input: OverviewInput,
+  result: CollectorResult<NormalizedVenueSnapshot[]>,
+): OverviewInput {
+  if (result.data === undefined) return input;
+  return {
+    ...input,
+    normalizedVenueSnapshots: [
+      ...(input.normalizedVenueSnapshots ?? []),
+      ...result.data,
+    ],
+  };
 }
 
 // Type-safe constructor — erases T to unknown so entries can be stored in a plain array.

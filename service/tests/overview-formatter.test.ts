@@ -424,6 +424,73 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).toContain('Fresh lower timeframe cluster.');
   });
 
+  it('renders scoped GAP-safe Telegram labels', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      briefConfidence: 'medium',
+      confidenceBreakdown: {
+        signalClarity: 0.9,
+        dataCoverage: 0.7,
+        venueAgreement: 0.45,
+        ambiguityPenalty: 0.3,
+        finalScore: 0.65,
+        label: 'medium',
+        reasons: ['Derivatives are source-scoped, so high confidence is capped.'],
+      },
+      eth: {
+        summary: 'ETH is weak in USD terms.',
+        vsbtc: 'ETH/BTC rising — ETH gaining vs BTC (+3.1% over 7d)',
+        keyLevels: ['2142'],
+        headerLabel: 'ETH/BTC 7d resilience, USD weak',
+        ethUsd24hLabel: 'weak',
+      },
+      alts: {
+        summary: 'Tracked basket positive.',
+        rotationState: 'broad_rotation',
+        breadth: '83% of 6 tracked alts positive on 24h',
+        sourceScope: 'tracked_basket',
+      },
+      derivatives: {
+        summary: 'Neutral.',
+        funding: 'neutral across BTC/ETH',
+        oi: 'stable across BTC/ETH',
+        positioning: 'balanced across BTC/ETH',
+        sourceScope: 'single_venue',
+      },
+      liquidity: {
+        recoveryZone: '66754.8',
+        immediateUpside: '74225.4',
+        largerUpsideMagnet: '75000 max pain · Deribit · front_expiry 07JUN26',
+        downsideVulnerability: 'below 65412',
+        bullets: ['No confirmed liquidation cluster data available.'],
+      },
+      events: {
+        summary: 'Delisting announced.',
+        upcoming: [{
+          title: 'Delisting of ELON and VINU',
+          time: '2026-06-10T08:00:00.000Z',
+          importance: 'high',
+          displayTimeType: 'tradingEndsAt',
+          detail: 'Trading ends: 2026-06-10T08:00:00.000Z',
+        }],
+      },
+      scenarios: {
+        reclaim: 'Above 68,806.95 -> relief attempt.',
+        rejection: 'Below 66,754.8 -> pressure remains.',
+        chop: '65,412-66,754.8 -> range/chop conditions.',
+      },
+    }));
+
+    expect(html).toContain('<b>Confidence:</b> 🟡 medium');
+    expect(html).toContain('<b>Reason:</b> Derivatives are source-scoped');
+    expect(html).toContain('Ξ ETH · 🔴 ETH/BTC 7d resilience, USD weak');
+    expect(html).toContain('🌊 Alts · ⚪ tracked basket rotation');
+    expect(html).toContain('📊 Derivs · ⚪ Bybit-scoped neutral');
+    expect(html).toContain('Funding: neutral across BTC/ETH · Bybit-scoped');
+    expect(html).toContain('Options ref: <code>75000 max pain · Deribit · front_expiry 07JUN26</code>');
+    expect(html).toContain('trading ends <code>2026-06-10T08:00:00.000Z</code>');
+    expect(html).toContain('Reclaim: Above 68,806.95 -&gt; relief attempt.');
+  });
+
 });
 
 describe('OverviewFormatter.splitForTelegram()', () => {

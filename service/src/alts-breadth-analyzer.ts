@@ -40,6 +40,10 @@ export function analyzeAltsBreadth(
     totalTracked: altSnapshots.length,
     breadthLabel,
     rotationState,
+    sourceScope: 'tracked_basket',
+    basketName: 'configured_tracked_alts',
+    symbols: altSnapshots.map((snapshot) => snapshot.symbol),
+    timeBasis: 'utc_daily_candle',
   };
 }
 

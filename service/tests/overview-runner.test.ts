@@ -731,8 +731,8 @@ describe('OverviewRunner.run()', () => {
 
   it('logs invariant violations as warnings without failing the run', async () => {
     const badOutput = makeValidOutput();
-    // Violate: go long is a forbidden phrase
-    badOutput.scenarios.reclaim = 'Go long above 98000 for ATH push.';
+    // Violate: go long is a forbidden phrase outside deterministic scenario overrides.
+    badOutput.btc.summary = 'Go long above 98000 for ATH push.';
 
     const logger = makeLogger();
     const deps = makeDeps({
@@ -758,7 +758,7 @@ describe('OverviewRunner.run()', () => {
 
   it('does not publish to Telegram when output has hard violations (forbidden phrase)', async () => {
     const badOutput = makeValidOutput();
-    badOutput.scenarios.reclaim = 'Go long above 98000.';
+    badOutput.btc.summary = 'Go long above 98000.';
 
     const publisher = { publish: vi.fn().mockResolvedValue(['msg-1']) };
     const deps = makeDeps({

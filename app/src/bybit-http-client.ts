@@ -54,9 +54,10 @@ export class BybitHttpClient {
     symbol: string,
     interval: 'W' | 'D' | '240',
     limit: number,
+    category: 'spot' | 'linear' = 'spot',
   ): Promise<BybitKline[]> {
     const url = new URL(`${this.baseUrl}/v5/market/kline`);
-    url.searchParams.set('category', 'spot');
+    url.searchParams.set('category', category);
     url.searchParams.set('symbol', symbol);
     url.searchParams.set('interval', interval);
     url.searchParams.set('limit', String(limit));
@@ -143,12 +144,15 @@ export class BybitHttpClient {
     }));
   }
 
-  async getTicker(symbol: string): Promise<{ lastPrice: number }> {
+  async getTicker(
+    symbol: string,
+    category: 'spot' | 'linear' = 'spot',
+  ): Promise<{ lastPrice: number; prevPrice24h?: number; highPrice24h?: number; lowPrice24h?: number; price24hPcnt?: number }> {
     const url = new URL(`${this.baseUrl}/v5/market/tickers`);
-    url.searchParams.set('category', 'spot');
+    url.searchParams.set('category', category);
     url.searchParams.set('symbol', symbol);
 
-    const result = await parseJson<{ list: Array<{ lastPrice: string }> }>(
+    const result = await parseJson<{ list: Array<{ lastPrice: string; prevPrice24h?: string; highPrice24h?: string; lowPrice24h?: string; price24hPcnt?: string }> }>(
       await fetch(url.toString()),
       `ticker(${symbol})`,
     );
@@ -158,6 +162,12 @@ export class BybitHttpClient {
       throw new Error(`No ticker data returned for symbol: ${symbol}`);
     }
 
-    return { lastPrice: parseFloat(first.lastPrice) };
+    return {
+      lastPrice: parseFloat(first.lastPrice),
+      ...(first.prevPrice24h !== undefined ? { prevPrice24h: parseFloat(first.prevPrice24h) } : {}),
+      ...(first.highPrice24h !== undefined ? { highPrice24h: parseFloat(first.highPrice24h) } : {}),
+      ...(first.lowPrice24h !== undefined ? { lowPrice24h: parseFloat(first.lowPrice24h) } : {}),
+      ...(first.price24hPcnt !== undefined ? { price24hPcnt: parseFloat(first.price24hPcnt) * 100 } : {}),
+    };
   }
 }
