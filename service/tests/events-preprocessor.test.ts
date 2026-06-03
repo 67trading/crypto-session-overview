@@ -21,6 +21,9 @@ function makeEvent(
     dedupeKey: overrides.dedupeKey ?? `key-${id}`,
     relevanceScore: overrides.relevanceScore ?? 50,
     ...(overrides.scheduledTime !== undefined ? { scheduledTime: overrides.scheduledTime } : {}),
+    ...(overrides.publishedAt !== undefined ? { publishedAt: overrides.publishedAt } : {}),
+    ...(overrides.effectiveAt !== undefined ? { effectiveAt: overrides.effectiveAt } : {}),
+    ...(overrides.tradingEndsAt !== undefined ? { tradingEndsAt: overrides.tradingEndsAt } : {}),
     ...(overrides.asset !== undefined ? { asset: overrides.asset } : {}),
     ...(overrides.exchange !== undefined ? { exchange: overrides.exchange } : {}),
   };
@@ -168,6 +171,22 @@ describe('preprocessEvents()', () => {
       const event = makeEvent({ title: 'Unscheduled', importance: 'high' });
       const { precomputedEvents } = preprocessEvents([event], SESSION);
       expect(precomputedEvents.upcomingEvents[0]!.time).toBe(event.detectedAt);
+    });
+
+    it('prefers tradingEndsAt for display time and marks it confirmed', () => {
+      const event = makeEvent({
+        title: 'Delisting',
+        importance: 'high',
+        detectedAt: '2026-06-03T08:00:00.000Z',
+        publishedAt: '2026-06-03T08:00:00.000Z',
+        tradingEndsAt: '2026-06-10T08:00:00.000Z',
+      });
+      const { precomputedEvents } = preprocessEvents([event], SESSION);
+      expect(precomputedEvents.upcomingEvents[0]).toEqual(expect.objectContaining({
+        time: '2026-06-10T08:00:00.000Z',
+        displayTimeType: 'tradingEndsAt',
+        verificationStatus: 'confirmed_single_source',
+      }));
     });
   });
 

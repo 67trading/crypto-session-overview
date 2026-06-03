@@ -148,6 +148,9 @@ export function checkOutputInvariants(output: OverviewOutput): string[] {
   if (!output.scenarios.reclaim) violations.push('scenarios.reclaim must be non-empty');
   if (!output.scenarios.rejection) violations.push('scenarios.rejection must be non-empty');
   if (!output.scenarios.chop) violations.push('scenarios.chop must be non-empty');
+  for (const [name, line] of Object.entries(output.scenarios)) {
+    if (!/[.!?]$/.test(line.trim())) violations.push(`scenarios.${name} must be a complete sentence/line`);
+  }
 
   if (!output.note) violations.push('note must be non-empty');
   if (output.note !== PRODUCT_FOOTER_NOTE) violations.push('note must match product footer contract');
@@ -202,6 +205,29 @@ export function checkSourceAwareOutputInvariants(output: OverviewOutput, input: 
     && /\b(?:expiry|strike|magnet|max pain|put\/call|implied vol|iv|pinning|options? area)\b/.test(text);
   if (optionsClaim && !hasDeribitOptionsSource(input)) {
     violations.push('Options claims require successful Deribit options context');
+  }
+  if ((output.alts as { sourceScope?: string }).sourceScope === 'tracked_basket'
+    && /\bbroad\b/i.test(output.alts.rotationState.replace(/_/g, ' '))
+    && !/\btracked\b/i.test(output.alts.breadth)) {
+    violations.push('Tracked basket breadth cannot be presented as market-wide broad rotation');
+  }
+  if ((output.derivatives as { sourceScope?: string }).sourceScope === 'single_venue'
+    && /\bcross-venue|across venues\b/i.test(`${output.derivatives.summary} ${output.derivatives.funding} ${output.derivatives.oi} ${output.derivatives.positioning}`)) {
+    violations.push('Single-venue derivatives cannot be presented as cross-venue');
+  }
+  const nakedMaxPain = /\bmax pain\b/i.test(text)
+    && !/\bderibit\b/i.test(text)
+    && !/\b(?:expiry|front_expiry|weekly|monthly|scope unclear)\b/i.test(text);
+  if (nakedMaxPain) {
+    violations.push('Max pain references require expiry scope or explicit caveat');
+  }
+  const ambiguousEventShownAsEffective = output.events.upcoming.some((event) => {
+    const meta = event as { displayTimeType?: string; detail?: string };
+    return (meta.displayTimeType === 'detectedAt' || meta.displayTimeType === 'publishedAt')
+      && meta.detail?.toLowerCase().includes('effective:') === true;
+  });
+  if (ambiguousEventShownAsEffective) {
+    violations.push('Detected/published event timestamps cannot be presented as effective event time');
   }
 
   const noConfirmedClusterWording = /\bno confirmed\b.{0,40}\bliquidation clusters?\b/.test(text);

@@ -11,6 +11,51 @@ const IMPORTANCE_ORDER: Record<NormalizedEvent['importance'], number> = {
 
 const DEFAULT_MAX_UPCOMING = 8;
 
+function chooseDisplayTime(event: NormalizedEvent): {
+  time: string;
+  displayTimeType: 'tradingEndsAt' | 'effectiveAt' | 'publishedAt' | 'detectedAt' | 'scheduledTime';
+  detail?: string;
+  verificationStatus: 'confirmed_single_source' | 'ambiguous';
+} {
+  if (event.tradingEndsAt !== undefined) {
+    return {
+      time: event.tradingEndsAt,
+      displayTimeType: 'tradingEndsAt',
+      detail: `Trading ends: ${event.tradingEndsAt}`,
+      verificationStatus: 'confirmed_single_source',
+    };
+  }
+  if (event.effectiveAt !== undefined) {
+    return {
+      time: event.effectiveAt,
+      displayTimeType: 'effectiveAt',
+      detail: `Effective: ${event.effectiveAt}`,
+      verificationStatus: 'confirmed_single_source',
+    };
+  }
+  if (event.scheduledTime !== undefined) {
+    return {
+      time: event.scheduledTime,
+      displayTimeType: 'scheduledTime',
+      verificationStatus: 'confirmed_single_source',
+    };
+  }
+  if (event.publishedAt !== undefined) {
+    return {
+      time: event.publishedAt,
+      displayTimeType: 'publishedAt',
+      detail: 'Effective time not parsed.',
+      verificationStatus: 'ambiguous',
+    };
+  }
+  return {
+    time: event.detectedAt,
+    displayTimeType: 'detectedAt',
+    detail: 'Effective time not parsed.',
+    verificationStatus: 'ambiguous',
+  };
+}
+
 export function preprocessEvents(
   events: NormalizedEvent[],
   session: CryptoSession,
@@ -44,11 +89,17 @@ export function preprocessEvents(
     return b.relevanceScore - a.relevanceScore;
   });
 
-  const upcoming = sorted.slice(0, maxUpcoming).map((e) => ({
-    title: e.title,
-    time: e.scheduledTime ?? e.detectedAt,
-    importance: e.importance,
-  }));
+  const upcoming = sorted.slice(0, maxUpcoming).map((e) => {
+    const display = chooseDisplayTime(e);
+    return {
+      title: e.title,
+      time: display.time,
+      importance: e.importance,
+      displayTimeType: display.displayTimeType,
+      ...(display.detail !== undefined ? { detail: display.detail } : {}),
+      verificationStatus: display.verificationStatus,
+    };
+  });
 
   const precomputedEvents: PrecomputedEvents = {
     upcomingEvents: upcoming,

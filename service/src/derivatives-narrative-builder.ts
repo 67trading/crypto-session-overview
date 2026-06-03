@@ -59,9 +59,13 @@ export function buildDerivativesNarrative(
 
   if (symbols.length === 0) {
     return {
-      funding: 'data unavailable',
-      oi: 'data unavailable',
-      positioning: 'data unavailable',
+    funding: 'data unavailable',
+    oi: 'data unavailable',
+    positioning: 'data unavailable',
+    sourceScope: 'unknown',
+    venuesAvailable: [],
+    verificationStatus: 'unavailable',
+    positioningBasis: 'unknown',
     };
   }
 
@@ -69,5 +73,9 @@ export function buildDerivativesNarrative(
     funding: buildStatusNarrative(symbols, (c) => FUNDING_LABELS[c.fundingStatus], contexts),
     oi: buildStatusNarrative(symbols, (c) => OI_LABELS[c.oiStatus], contexts),
     positioning: buildStatusNarrative(symbols, (c) => POSITIONING_LABELS[c.positioningStatus], contexts),
+    sourceScope: 'single_venue',
+    venuesAvailable: ['bybit'],
+    verificationStatus: 'source_scoped',
+    positioningBasis: 'funding_only',
   };
 }

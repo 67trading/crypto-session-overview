@@ -24,6 +24,8 @@ import { buildDerivativesNarrative } from './derivatives-narrative-builder.js';
 import { preprocessEvents } from './events-preprocessor.js';
 import { analyzeCrossMarket } from './cross-market-analyzer.js';
 import { PRODUCT_FOOTER_NOTE, buildPresentationContext } from './presentation-contract.js';
+import { computeReportConfidence } from './market-regime-confidence.js';
+import { buildDeterministicScenarios } from './scenario-builder.js';
 import { metrics } from './metrics.js';
 import {
   computeWeeklyLevels,
@@ -178,6 +180,19 @@ function fallbackPosition(levels: OverviewInput['levels'][string] | undefined): 
 
 function fallbackStructure(levels: OverviewInput['levels'][string] | undefined): OverviewOutput['btc']['structure'] {
   return levels?.fourHour?.structure ?? 'unknown';
+}
+
+function buildOptionsReference(options: OverviewInput['optionsContext'] | undefined): string | undefined {
+  const btcOptions = options?.find((option) => option.symbol === 'BTC' || option.currency === 'BTC');
+  if (btcOptions === undefined) return undefined;
+  const selected = btcOptions.selectedMaxPain;
+  if (selected !== undefined) {
+    return `${selected.maxPain} max pain · Deribit · ${btcOptions.expiryScope ?? 'front_expiry'} ${selected.expiryDate}`;
+  }
+  if (btcOptions.maxPainStrike !== undefined) {
+    return `${btcOptions.maxPainStrike} max pain · Deribit · expiry scope unclear`;
+  }
+  return undefined;
 }
 
 function buildDeterministicFallbackOverview(params: {
@@ -653,6 +668,25 @@ export class OverviewRunner {
       ];
       const sourceHealth = buildSourceHealthSummary(allCollectorQuality);
       augmentedInput = { ...augmentedInput, sourceHealth };
+      const confidenceBreakdown = computeReportConfidence({
+        precomputedRegime,
+        dataStatus,
+        btcLevels,
+        derivativesNarrative,
+        altsBreadth,
+        crossMarket,
+        options: augmentedInput.optionsContext,
+        events: precomputedEvents,
+      });
+      const confidenceAdjustedRegime = {
+        ...precomputedRegime,
+        briefConfidence: confidenceBreakdown.label,
+      };
+      augmentedInput = {
+        ...augmentedInput,
+        precomputedRegime: confidenceAdjustedRegime,
+        confidenceBreakdown,
+      };
       augmentedInput = {
         ...augmentedInput,
         presentationContext: buildPresentationContext(augmentedInput),
@@ -685,7 +719,7 @@ export class OverviewRunner {
           output: buildDeterministicFallbackOverview({
             session,
             input: augmentedInput,
-            precomputedRegime,
+            precomputedRegime: confidenceAdjustedRegime,
             dataStatus,
             altsBreadth,
             derivativesNarrative,
@@ -697,8 +731,9 @@ export class OverviewRunner {
       }
       const outputBase = {
         ...llmResult.output,
-        marketRegime: precomputedRegime.marketRegime,
-        briefConfidence: precomputedRegime.briefConfidence,
+        marketRegime: confidenceAdjustedRegime.marketRegime,
+        briefConfidence: confidenceAdjustedRegime.briefConfidence,
+        confidenceBreakdown,
         // Use deterministic computed dataStatus, not LLM interpretation
         dataStatus,
         // Fallback liquidity if LLM did not generate it (transitional guard)
@@ -707,6 +742,9 @@ export class OverviewRunner {
         },
         alts: {
           ...llmResult.output.alts,
+          sourceScope: altsBreadth.sourceScope,
+          basketName: altsBreadth.basketName,
+          timeBasis: altsBreadth.timeBasis,
           rotationState: altsBreadth.rotationState !== 'unknown'
             ? altsBreadth.rotationState
             : llmResult.output.alts.rotationState,
@@ -716,6 +754,8 @@ export class OverviewRunner {
         },
         derivatives: {
           ...llmResult.output.derivatives,
+          sourceScope: derivativesNarrative.sourceScope,
+          verificationStatus: derivativesNarrative.verificationStatus,
           funding: derivativesNarrative.funding !== 'data unavailable'
             ? derivativesNarrative.funding
             : llmResult.output.derivatives.funding,
@@ -728,10 +768,13 @@ export class OverviewRunner {
         },
         eth: {
           ...llmResult.output.eth,
+          headerLabel: crossMarket.ethHeaderLabel,
+          ethUsd24hLabel: crossMarket.ethUsd24hLabel,
           vsbtc: crossMarket.ethBtcTrendLabel !== 'data unavailable'
             ? crossMarket.ethBtcTrendLabel
             : llmResult.output.eth.vsbtc,
         },
+        scenarios: buildDeterministicScenarios(btcLevels, llmResult.output.scenarios),
         events: {
           ...llmResult.output.events,
           upcoming: precomputedEvents.upcomingEvents.length > 0
@@ -743,6 +786,13 @@ export class OverviewRunner {
         ...(llmErrorKind !== undefined ? { llmErrorKind } : {}),
         outputSource: generationMode === 'LLM_JSON' ? 'llm_json' : 'deterministic_fallback',
       };
+      const optionsReference = buildOptionsReference(augmentedInput.optionsContext);
+      if (optionsReference !== undefined) {
+        outputBase.liquidity = {
+          ...outputBase.liquidity,
+          largerUpsideMagnet: optionsReference,
+        };
+      }
       const output = {
         ...outputBase,
         whatChanged: previousOutput !== null

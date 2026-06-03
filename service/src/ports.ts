@@ -52,6 +52,41 @@ export type PrecomputedRegime = {
   briefConfidence: 'low' | 'medium' | 'high';
 };
 
+export type Venue = 'bybit' | 'binance' | 'okx' | 'deribit';
+export type SourceScope =
+  | 'single_venue'
+  | 'cross_venue'
+  | 'tracked_basket'
+  | 'market_wide'
+  | 'options_exchange'
+  | 'announcement_source'
+  | 'unknown';
+export type TimeBasis =
+  | 'rolling_24h'
+  | 'utc_daily_candle'
+  | 'utc_weekly_candle'
+  | 'seven_day_ratio'
+  | 'session_asia'
+  | 'four_hour_candle'
+  | 'unknown';
+export type VerificationStatus =
+  | 'confirmed_cross_venue'
+  | 'confirmed_single_source'
+  | 'source_scoped'
+  | 'ambiguous'
+  | 'unavailable'
+  | 'stale';
+
+export type ConfidenceBreakdown = {
+  signalClarity: number;
+  dataCoverage: number;
+  venueAgreement: number;
+  ambiguityPenalty: number;
+  finalScore: number;
+  label: 'low' | 'medium' | 'high';
+  reasons: string[];
+};
+
 export type AltsBreadthSummary = {
   breadthPercent: number;
   positiveCount: number;
@@ -59,16 +94,29 @@ export type AltsBreadthSummary = {
   breadthLabel: string;
   rotationState: 'broad_rotation' | 'selective_rotation' | 'no_rotation' | 'weak' | 'unknown';
   outperformingBtcPct?: number;
+  sourceScope?: SourceScope;
+  basketName?: string;
+  symbols?: string[];
+  timeBasis?: TimeBasis;
 };
 
 export type DerivativesNarrativeSummary = {
   funding: string;
   oi: string;
   positioning: string;
+  sourceScope?: SourceScope;
+  venuesAvailable?: Venue[];
+  verificationStatus?: VerificationStatus;
+  positioningBasis?: 'funding_only' | 'funding_and_oi' | 'funding_oi_longshort' | 'unknown';
 };
 
 export type CrossMarketSummary = {
   ethBtcTrendLabel: string;
+  ethHeaderLabel?: string;
+  ethBtc7dChangePct?: number;
+  ethUsd24hChangePct?: number;
+  ethVsBtc24hChangePct?: number;
+  ethUsd24hLabel?: 'strong' | 'weak' | 'neutral' | 'unknown';
   dominanceSignal: 'rising' | 'falling' | 'mixed' | 'unknown';
   dominanceLabel: string;
   topOutperformers: string[];
@@ -80,6 +128,9 @@ export type PrecomputedEvents = {
     title: string;
     time: string;
     importance: 'critical' | 'high' | 'medium' | 'low';
+    displayTimeType?: 'tradingEndsAt' | 'effectiveAt' | 'publishedAt' | 'detectedAt' | 'scheduledTime';
+    detail?: string;
+    verificationStatus?: VerificationStatus;
   }[];
   totalDeduped: number;
   sessionFiltered: number;
@@ -163,6 +214,23 @@ export type OptionsContext = {
   putCallRatio?: number;
   impliedVol24h?: number;
   maxPainStrike?: number;
+  source?: 'deribit';
+  currency?: 'BTC' | 'ETH';
+  selectedMaxPain?: {
+    expiryDate: string;
+    maxPain: number;
+    instrumentsIncluded: number;
+    openInterestTotal?: number;
+  };
+  allExpiries?: {
+    expiryDate: string;
+    maxPain: number;
+    instrumentsIncluded: number;
+    openInterestTotal?: number;
+  }[];
+  expiryScope?: 'front_expiry' | 'weekly' | 'monthly' | 'all_expiries' | 'unknown';
+  computedAt?: string;
+  verificationStatus?: VerificationStatus;
 };
 
 export type MacroRatesContext = {
@@ -255,6 +323,7 @@ export type OverviewInput = {
   chainFlowContext?: ChainFlowContext;
   sourceHealth?: SourceHealthSummary;
   presentationContext?: PresentationContext;
+  confidenceBreakdown?: ConfidenceBreakdown;
 };
 
 // ─── Collection ports ──────────────────────────────────────────────────────────

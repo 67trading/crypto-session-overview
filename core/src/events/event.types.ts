@@ -18,6 +18,9 @@ export type NormalizedEvent = {
   title: string;
   scheduledTime?: string;
   detectedAt: string;
+  publishedAt?: string;
+  effectiveAt?: string;
+  tradingEndsAt?: string;
   importance: EventImportance;
   sessionRelevance: CryptoSession[];
   source: string;

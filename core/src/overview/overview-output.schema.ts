@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
 const DataStatusValueSchema = z.enum(['fresh', 'stale', 'partial', 'failed', 'unavailable']);
+const ConfidenceLabelSchema = z.enum(['low', 'medium', 'high']);
+const SourceScopeSchema = z.enum(['single_venue', 'cross_venue', 'tracked_basket', 'market_wide', 'options_exchange', 'announcement_source', 'unknown']);
+const VerificationStatusSchema = z.enum(['confirmed_cross_venue', 'confirmed_single_source', 'source_scoped', 'ambiguous', 'unavailable', 'stale']);
 
 export const OverviewOutputSchema = z.object({
   briefId: z.string(),
@@ -19,7 +22,16 @@ export const OverviewOutputSchema = z.object({
     'mixed',
     'unknown',
   ]),
-  briefConfidence: z.enum(['low', 'medium', 'high']),
+  briefConfidence: ConfidenceLabelSchema,
+  confidenceBreakdown: z.object({
+    signalClarity: z.number(),
+    dataCoverage: z.number(),
+    venueAgreement: z.number(),
+    ambiguityPenalty: z.number(),
+    finalScore: z.number(),
+    label: ConfidenceLabelSchema,
+    reasons: z.array(z.string()),
+  }).optional(),
 
   dataStatus: z.object({
     price: DataStatusValueSchema,
@@ -41,6 +53,8 @@ export const OverviewOutputSchema = z.object({
     summary: z.string(),
     vsbtc: z.string(),
     keyLevels: z.array(z.string()),
+    headerLabel: z.string().optional(),
+    ethUsd24hLabel: z.enum(['strong', 'weak', 'neutral', 'unknown']).optional(),
   }),
 
   majorAssets: z.array(z.object({
@@ -53,6 +67,9 @@ export const OverviewOutputSchema = z.object({
     summary: z.string(),
     rotationState: z.enum(['broad_rotation', 'selective_rotation', 'no_rotation', 'weak', 'unknown']),
     breadth: z.string(),
+    sourceScope: SourceScopeSchema.optional(),
+    basketName: z.string().optional(),
+    timeBasis: z.string().optional(),
   }),
 
   derivatives: z.object({
@@ -60,6 +77,8 @@ export const OverviewOutputSchema = z.object({
     funding: z.string(),
     oi: z.string(),
     positioning: z.string(),
+    sourceScope: SourceScopeSchema.optional(),
+    verificationStatus: VerificationStatusSchema.optional(),
   }),
 
   liquidity: z.object({
@@ -76,6 +95,9 @@ export const OverviewOutputSchema = z.object({
       title: z.string(),
       time: z.string(),
       importance: z.enum(['critical', 'high', 'medium', 'low']),
+      displayTimeType: z.enum(['tradingEndsAt', 'effectiveAt', 'publishedAt', 'detectedAt', 'scheduledTime']).optional(),
+      detail: z.string().optional(),
+      verificationStatus: VerificationStatusSchema.optional(),
     })),
   }),
 

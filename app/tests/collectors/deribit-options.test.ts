@@ -80,6 +80,29 @@ describe('DeribitOptionsCollector', () => {
     expect([90000, 100000]).toContain(result.data?.[0]?.maxPainStrike);
   });
 
+  it('returns expiry-aware selected max pain metadata', async () => {
+    const instruments = [
+      makeInstrument(90000, 'C', 1, 65, '07JUN26'),
+      makeInstrument(100000, 'P', 1, 65, '07JUN26'),
+      makeInstrument(110000, 'C', 10, 65, '28JUN26'),
+    ];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeDeribitResponse(instruments)));
+
+    const collector = new DeribitOptionsCollector();
+    const result = await collector.collect(ctx);
+
+    expect(result.data?.[0]).toEqual(expect.objectContaining({
+      source: 'deribit',
+      currency: 'BTC',
+      expiryScope: 'front_expiry',
+      verificationStatus: 'confirmed_single_source',
+      selectedMaxPain: expect.objectContaining({
+        expiryDate: '07JUN26',
+        instrumentsIncluded: 2,
+      }),
+    }));
+  });
+
   it('returns BTC as the symbol for the first item', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
       makeDeribitResponse([makeInstrument(90000, 'C', 100)]),
