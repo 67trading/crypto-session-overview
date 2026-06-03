@@ -72,10 +72,10 @@ describe('BroadAltPerpTapeCollector', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string | URL) => {
       const href = String(url);
       if (href.includes('bybit')) {
-        return response({ retCode: 0, retMsg: 'OK', result: { list: [bybitItem('BTC'), bybitItem('ETH'), bybitItem('USDC'), bybitItem('SOL')] } });
+        return response({ retCode: 0, retMsg: 'OK', result: { list: [bybitItem('BTC'), bybitItem('ETH'), bybitItem('USDC'), bybitItem('NVDA'), bybitItem('XAU'), bybitItem('SOL')] } });
       }
       if (href.includes('binance')) {
-        return response([binanceItem('SOL'), binanceItem('ONLYBINANCE')]);
+        return response([binanceItem('NVDA'), binanceItem('XAU'), binanceItem('SOL'), binanceItem('ONLYBINANCE')]);
       }
       return response({ code: '0', msg: '', data: [] });
     }));

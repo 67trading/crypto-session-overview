@@ -10,6 +10,12 @@ const EXCLUDED_BASES = new Set([
   'WBTC', 'WETH', 'STETH', 'WSTETH',
 ]);
 const LEVERAGED_SUFFIXES = ['UP', 'DOWN', 'BULL', 'BEAR', '2L', '2S', '3L', '3S', '5L', '5S'];
+const NON_CRYPTO_BASES = new Set([
+  // Tokenized stocks / equity perps occasionally share the USDT perp tape.
+  'AAPL', 'AMD', 'AMZN', 'BILL', 'CRCL', 'GOOGL', 'INTC', 'META', 'MRVL', 'MSTR', 'MU', 'NFLX', 'NVDA', 'SNDK', 'TSLA', 'UB',
+  // Metals / commodity proxies are not crypto alt breadth.
+  'XAG', 'XAU', 'XAUT',
+]);
 
 type AltPerpTicker = {
   venue: Exclude<Venue, 'deribit'>;
@@ -49,6 +55,7 @@ async function fetchJson<T>(url: URL): Promise<T> {
 }
 function isEligibleBase(asset: string): boolean {
   if (EXCLUDED_BASES.has(asset)) return false;
+  if (NON_CRYPTO_BASES.has(asset)) return false;
   return !LEVERAGED_SUFFIXES.some((suffix) => asset.endsWith(suffix));
 }
 
