@@ -531,10 +531,21 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
         position: 'Below daily midpoint and below weekly midpoint.',
         structure: 'bearish',
         headerLabel: 'bearish range pressure',
+        spotPrice: 66700.12,
+      },
+      eth: {
+        summary: 'ETH context limited.',
+        vsbtc: 'ETH/BTC rising — ETH gaining vs BTC (+3.0% over 7d)',
+        keyLevels: ['2142'],
+        headerLabel: 'ETH/BTC 7d resilience',
+        ethUsd24hLabel: 'neutral',
+        spotPrice: 1877.45,
       },
     }));
 
     expect(html).toContain('₿ BTC · 🔴 bearish range pressure');
+    expect(html).toContain('Spot: <code>66,700.12</code>');
+    expect(html).toContain('Spot: <code>1,877.45</code>');
     expect(html).not.toContain('₿ BTC · 🟡 range');
   });
 

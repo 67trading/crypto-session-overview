@@ -251,6 +251,11 @@ function formatEthUsd24hLabel(output: OverviewOutput): string {
   return label === 'strong' || label === 'weak' || label === 'neutral' ? label : 'not shown';
 }
 
+function formatSpotPrice(value: number | undefined): string | undefined {
+  if (value === undefined || !Number.isFinite(value)) return undefined;
+  return Number(value.toFixed(2)).toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
 function eventMarker(importance: string): string {
   if (importance === 'critical' || importance === 'high') return '🔴';
   if (importance === 'medium') return '🟠';
@@ -485,6 +490,8 @@ export class OverviewFormatter {
       : derivativesMeta.sourceScope === 'single_venue'
       ? 'Bybit-scoped neutral'
       : output.derivatives.positioning.toLowerCase().includes('neutral') || output.derivatives.positioning.toLowerCase().includes('balanced') ? 'neutral' : 'positioning';
+    const btcSpot = formatSpotPrice(output.btc.spotPrice);
+    const ethSpot = formatSpotPrice(output.eth.spotPrice);
     const btcLevels = formatHtmlLevels(output.btc.keyLevels, 2);
     const ethLevels = formatHtmlLevels(output.eth.keyLevels, 2);
     const highImpactEvents = output.events.upcoming.filter((ev) =>
@@ -502,16 +509,18 @@ export class OverviewFormatter {
       `${isInitialRead(output) ? '⚪' : '✅'} ${escapeHtml(compactComplete(bullet, 95))}`
     );
     const btcBullets = [
+      ...(btcSpot !== undefined ? [`• Spot: ${code(btcSpot)}`] : []),
       `• ${escapeHtml(compactComplete(output.btc.position, 80))}`,
       `• ${escapeHtml(compactComplete(output.btc.summary, 90))}`,
       ...btcLevels.map((level, index) => `• ${index === 0 ? 'Recovery/ref' : 'Resistance/ref'}: ${level}`),
-    ].filter((line) => line.trim() !== '•').slice(0, 4);
+    ].filter((line) => line.trim() !== '•').slice(0, 5);
     const ethBullets = [
+      ...(ethSpot !== undefined ? [`• Spot: ${code(ethSpot)}`] : []),
       `• ${escapeHtml(compactComplete(output.eth.vsbtc, 90))}`,
       `• ETH/USD 24h: ${escapeHtml(formatEthUsd24hLabel(output))}`,
       ...ethLevels.map((level) => `• Ref: ${level}`),
       `• ${escapeHtml(compactComplete(output.eth.summary, 80))}`,
-    ].filter((line) => line.trim() !== '•').slice(0, 3);
+    ].filter((line) => line.trim() !== '•').slice(0, 4);
     const altsBullets = [
       `Breadth: ${compactComplete(output.alts.breadth, 80)}`,
       `Scope: ${formatAltScope(output)}`,

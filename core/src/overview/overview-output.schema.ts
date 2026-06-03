@@ -52,6 +52,7 @@ export const OverviewOutputSchema = z.object({
     position: z.string(),
     structure: z.enum(['bullish', 'bearish', 'range', 'transition', 'unknown']),
     headerLabel: z.string().optional(),
+    spotPrice: z.number().optional(),
   }),
 
   eth: z.object({
@@ -60,6 +61,7 @@ export const OverviewOutputSchema = z.object({
     keyLevels: z.array(z.string()),
     headerLabel: z.string().optional(),
     ethUsd24hLabel: z.enum(['strong', 'weak', 'neutral', 'unknown']).optional(),
+    spotPrice: z.number().optional(),
   }),
 
   majorAssets: z.array(z.object({

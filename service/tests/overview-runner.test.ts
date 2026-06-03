@@ -158,7 +158,9 @@ describe('OverviewRunner.run()', () => {
       keyLevels: ['97000'],
       position: 'above daily midpoint',
       structure: 'range',
+      spotPrice: 1,
     };
+    llmOutput.eth.spotPrice = 2;
     const deps = makeDeps({
       repository: repo,
       marketDataCollector: {
@@ -187,7 +189,9 @@ describe('OverviewRunner.run()', () => {
         '78,089.9 (previous week high)',
         '74,225.4 (4H last swing high)',
       ],
+      spotPrice: 66700,
     }));
+    expect(saveCall.outputJson.eth.spotPrice).toBe(1800);
     expect(saveCall.outputJson.btc.summary).not.toMatch(/continuation bullish/i);
   });
 

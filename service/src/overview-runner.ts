@@ -598,6 +598,7 @@ export class OverviewRunner {
 
       // 5b. Build session context using BTC as the reference instrument
       const btcSnapshot = marketSnapshots.find((s) => s.symbol === 'BTCUSDT');
+      const ethSnapshot = marketSnapshots.find((s) => s.symbol === 'ETHUSDT');
       const sessionCtx = btcSnapshot !== undefined
         ? buildSessionContext(
             session,
@@ -655,6 +656,7 @@ export class OverviewRunner {
       const btcPresentation = buildBtcPresentationContext({
         btcTone: deterministicBtcTone,
         levels: btcLevels,
+        ...(btcSnapshot !== undefined ? { spotPrice: btcSnapshot.latestPrice } : {}),
       });
 
       const input = this.inputBuilder.build({
@@ -757,6 +759,7 @@ export class OverviewRunner {
       const finalBtcPresentation = buildBtcPresentationContext({
         btcTone: deterministicBtcTone,
         levels: btcLevels,
+        ...(btcSnapshot !== undefined ? { spotPrice: btcSnapshot.latestPrice } : {}),
       });
       augmentedInput = {
         ...augmentedInput,
@@ -857,6 +860,7 @@ export class OverviewRunner {
           ...llmResult.output.eth,
           headerLabel: crossMarket.ethHeaderLabel,
           ethUsd24hLabel: crossMarket.ethUsd24hLabel,
+          ...(ethSnapshot !== undefined ? { spotPrice: ethSnapshot.latestPrice } : {}),
           vsbtc: crossMarket.ethBtcTrendLabel !== 'data unavailable'
             ? crossMarket.ethBtcTrendLabel
             : llmResult.output.eth.vsbtc,

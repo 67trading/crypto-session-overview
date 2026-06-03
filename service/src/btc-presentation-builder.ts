@@ -116,6 +116,7 @@ function selectKeyLevels(tone: BtcTone, levels: HtfLevelsSnapshot | undefined): 
 export function buildBtcPresentationContext(params: {
   btcTone?: string;
   levels: HtfLevelsSnapshot | undefined;
+  spotPrice?: number;
 }): BtcPresentationContext {
   const tone = normalizeTone(params.btcTone);
   const fourHourStructure = params.levels?.fourHour?.structure ?? 'unknown';
@@ -129,6 +130,7 @@ export function buildBtcPresentationContext(params: {
     position: buildPosition(params.levels),
     summary: buildSummary(headerLabel),
     keyLevelsDisplay: selectKeyLevels(tone, params.levels),
+    ...(params.spotPrice !== undefined ? { spotPrice: params.spotPrice } : {}),
     source: 'deterministic_htf_levels',
   };
 }
@@ -140,5 +142,6 @@ export function btcPresentationToOutput(context: BtcPresentationContext): Overvi
     position: context.position,
     structure: context.structure,
     headerLabel: context.headerLabel,
+    ...(context.spotPrice !== undefined ? { spotPrice: context.spotPrice } : {}),
   };
 }

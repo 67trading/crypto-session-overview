@@ -36,6 +36,7 @@ describe('buildBtcPresentationContext()', () => {
     const context = buildBtcPresentationContext({
       btcTone: 'weak',
       levels: makeLevels(),
+      spotPrice: 66700.12,
     });
 
     expect(context.structure).toBe('bearish');
@@ -44,6 +45,7 @@ describe('buildBtcPresentationContext()', () => {
     expect(context.summary).toBe('BTC remains inside the 4H range, but below daily and weekly midpoints, leaving pressure to the downside.');
     expect(context.summary).not.toMatch(/bullish/i);
     expect(context.summary).toMatch(/\.$/);
+    expect(context.spotPrice).toBe(66700.12);
     expect(context.keyLevelsDisplay).toEqual([
       '78,089.9 (previous week high)',
       '74,225.4 (4H last swing high)',

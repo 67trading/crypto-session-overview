@@ -59,6 +59,7 @@ export type BtcPresentationContext = {
   position: string;
   summary: string;
   keyLevelsDisplay: string[];
+  spotPrice?: number;
   source: 'deterministic_htf_levels';
 };
 
