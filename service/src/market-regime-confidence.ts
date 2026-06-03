@@ -102,6 +102,10 @@ export function computeReportConfidence(params: {
     ambiguityPenalty += 0.1;
     reasons.push('Alt breadth is a tracked basket, not market-wide breadth.');
   }
+  if (params.altsBreadth.sourceScope === 'broad_alt_perp_tape' && params.altsBreadth.canRenderBroadLabel === false) {
+    ambiguityPenalty += 0.1;
+    reasons.push('Broad alt perp tape is unavailable or below the minimum eligible universe.');
+  }
   if (params.crossMarket.ethUsd24hLabel === 'weak' && params.crossMarket.ethBtc7dChangePct !== undefined && params.crossMarket.ethBtc7dChangePct > 0) {
     ambiguityPenalty += 0.05;
     reasons.push('ETH/BTC resilience conflicts with weak ETH/USD short-term performance.');

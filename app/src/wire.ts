@@ -15,7 +15,7 @@ import { OkxMarketCollector } from './collectors/okx-market.collector.js';
 import { SoSoValueEtfCollector } from './collectors/sosovalue-etf.collector.js';
 import { CoinMarketCapEtfCollector } from './collectors/coinmarketcap-etf.collector.js';
 import { IssuerHoldingsProxyCollector } from './collectors/issuer-holdings-proxy.collector.js';
-import { CoinGeckoBreadthCollector } from './collectors/coingecko-breadth.collector.js';
+import { BroadAltPerpTapeCollector } from './collectors/broad-alt-perp-tape.collector.js';
 import { FredClient } from './collectors/fred-client.js';
 import { FredRatesCollector } from './collectors/fred-rates.collector.js';
 import { BeaGdpCollector } from './collectors/bea-gdp.collector.js';
@@ -94,7 +94,7 @@ export function wire(config: AppConfig, logger: LoggerLike): SessionOverviewServ
     contextCollectorEntry(new SoSoValueEtfCollector(), mergeEtfFlowContext),
     contextCollectorEntry(new CoinMarketCapEtfCollector(), mergeEtfFlowContext),
     contextCollectorEntry(new IssuerHoldingsProxyCollector(), mergeEtfFlowContext),
-    contextCollectorEntry(new CoinGeckoBreadthCollector(), mergeBreadthContext),
+    contextCollectorEntry(new BroadAltPerpTapeCollector(), mergeBreadthContext),
     // Europe/Asia macro — public APIs, no key needed
     contextCollectorEntry(new EcbRatesCollector(), mergeMacroRatesContext),
     contextCollectorEntry(new EurostatInflationCollector(), mergeMacroRatesContext),

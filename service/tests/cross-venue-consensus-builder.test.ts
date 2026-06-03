@@ -78,6 +78,19 @@ describe('buildCrossVenueConsensus()', () => {
     expect(result.derivatives.openInterest.direction).toBe('unavailable');
     expect(result.derivatives.openInterest.verificationStatus).toBe('unavailable');
     expect(result.derivatives.openInterest.perVenue.find((row) => row.venue === 'binance')?.reason).toBe('OI present without change window');
+    expect(result.derivatives.combinedLabel).toBe('single_source');
+  });
+
+  it('does not label derivatives cross-venue neutral when only funding is cross-venue confirmed', () => {
+    const result = buildCrossVenueConsensus([
+      btcSnapshot('bybit', { priceChange: -3, funding: 0.0001 }),
+      btcSnapshot('binance', { priceChange: -3.2, funding: 0.0002, oiChange: 0.2 }),
+      btcSnapshot('okx', { priceChange: -2.9, funding: 0.0001 }),
+    ]);
+
+    expect(result.derivatives.funding.verificationStatus).toBe('confirmed_cross_venue');
+    expect(result.derivatives.openInterest.verificationStatus).toBe('source_scoped');
+    expect(result.derivatives.combinedLabel).toBe('single_source');
   });
 
   it('flags cross-venue conflicts as ambiguous', () => {

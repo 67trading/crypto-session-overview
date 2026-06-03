@@ -22,6 +22,7 @@ export type {
   DataStatus,
   MarketRegime,
   PrecomputedRegime,
+  BtcPresentationContext,
   PreviousBriefContext,
   AltsBreadthSummary,
   DerivativesNarrativeSummary,
@@ -44,6 +45,7 @@ export { classifyMarketRegime } from './market-regime-classifier.js';
 export type { RegimeClassifierInput } from './market-regime-classifier.js';
 export { analyzeAltsBreadth } from './alts-breadth-analyzer.js';
 export { buildDerivativesNarrative } from './derivatives-narrative-builder.js';
+export { buildBtcPresentationContext, btcPresentationToOutput } from './btc-presentation-builder.js';
 export { preprocessEvents } from './events-preprocessor.js';
 export { analyzeCrossMarket } from './cross-market-analyzer.js';
 export { scanForForbiddenPhrases, checkOutputInvariants, FORBIDDEN_PHRASES } from './output-invariants.js';

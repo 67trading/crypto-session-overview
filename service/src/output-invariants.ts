@@ -207,9 +207,13 @@ export function checkSourceAwareOutputInvariants(output: OverviewOutput, input: 
     violations.push('Options claims require successful Deribit options context');
   }
   if ((output.alts as { sourceScope?: string }).sourceScope === 'tracked_basket'
-    && /\bbroad\b/i.test(output.alts.rotationState.replace(/_/g, ' '))
-    && !/\btracked\b/i.test(output.alts.breadth)) {
-    violations.push('Tracked basket breadth cannot be presented as market-wide broad rotation');
+  ) {
+    violations.push('Configured/tracked symbols cannot power production Alts breadth');
+  }
+  if ((output.alts as { sourceScope?: string; canRenderBroadLabel?: boolean }).sourceScope === 'broad_alt_perp_tape'
+    && (output.alts as { canRenderBroadLabel?: boolean }).canRenderBroadLabel === false
+    && output.alts.rotationState === 'broad_rotation') {
+    violations.push('Cannot render broad Alts rotation when broad alt perp tape is unavailable');
   }
   if ((output.derivatives as { sourceScope?: string }).sourceScope === 'single_venue'
     && /\bcross-venue|across venues\b/i.test(`${output.derivatives.summary} ${output.derivatives.funding} ${output.derivatives.oi} ${output.derivatives.positioning}`)) {

@@ -296,6 +296,20 @@ describe('OverviewFormatter.format()', () => {
     expect(result.length).toBeLessThanOrEqual(4096);
     expect(formatter.splitForTelegram(result)).toHaveLength(1);
   });
+
+  it('does not present tracked-basket broad_rotation as market-wide broad rotation', () => {
+    const result = formatter.format(makeOutput({
+      alts: {
+        summary: 'Tracked basket positive.',
+        rotationState: 'broad_rotation',
+        breadth: '83% of 6 tracked alts positive on 24h',
+        sourceScope: 'tracked_basket',
+      },
+    }));
+
+    expect(result).toContain('Rotation: unavailable');
+    expect(result).not.toContain('Rotation: broad rotation');
+  });
 });
 
 describe('OverviewFormatter.formatCompact()', () => {
@@ -356,6 +370,20 @@ describe('OverviewFormatter.formatCompact()', () => {
     expect(compact).toContain('* Upside: 97,400 weekly high');
     expect(compact).not.toContain('* 97,400 weekly high');
     expect(compact).toContain('Fresh lower timeframe cluster.');
+  });
+
+  it('uses tracked-basket rotation wording in compact reports', () => {
+    const compact = formatter.formatCompact(makeOutput({
+      alts: {
+        summary: 'Tracked basket positive.',
+        rotationState: 'broad_rotation',
+        breadth: '83% of 6 tracked alts positive on 24h',
+        sourceScope: 'tracked_basket',
+      },
+    }));
+
+    expect(compact).toContain('🌊 Alts: unavailable · 83% of 6 tracked alts positive on 24h');
+    expect(compact).not.toContain('broad rotation');
   });
 });
 
@@ -483,12 +511,151 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).toContain('<b>Confidence:</b> 🟡 medium');
     expect(html).toContain('<b>Reason:</b> Derivatives are source-scoped');
     expect(html).toContain('Ξ ETH · 🔴 ETH/BTC 7d resilience, USD weak');
-    expect(html).toContain('🌊 Alts · ⚪ tracked basket rotation');
+    expect(html).toContain('ETH/USD 24h: weak');
+    expect(html).toContain('🌊 Alts · ⚪ unavailable');
+    expect(html).toContain('Scope: broad alt perp tape unavailable; configured symbols are not used for production Alts breadth');
+    expect(html).not.toContain('tracked basket rotation');
+    expect(html).not.toContain('Rotation: broad rotation');
     expect(html).toContain('📊 Derivs · ⚪ Bybit-scoped neutral');
     expect(html).toContain('Funding: neutral across BTC/ETH · Bybit-scoped');
-    expect(html).toContain('Options ref: <code>75000 max pain · Deribit · front_expiry 07JUN26</code>');
-    expect(html).toContain('trading ends <code>2026-06-10T08:00:00.000Z</code>');
+    expect(html).toContain('Options ref: <code>75000 max pain · Deribit · front expiry 07JUN26</code>');
+    expect(html).toContain('trading ends <code>2026-06-10 08:00 UTC</code>');
     expect(html).toContain('Reclaim: Above 68,806.95 -&gt; relief attempt.');
+  });
+
+  it('uses deterministic BTC header label in Telegram instead of raw structure', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      whatChanged: [
+        'Confidence: high → medium',
+        'BTC position: Currently positioned below both daily and weekly midpoints, and trading inside the previous Europe session range. → Below daily midpoint and below weekly midpoint.',
+      ],
+      btc: {
+        summary: 'BTC remains inside the 4H range, but below daily and weekly midpoints, leaving pressure to the downside.',
+        keyLevels: ['78089.9 (previous week high)', '74225.4 (4H last swing high)'],
+        position: 'Below daily midpoint and below weekly midpoint.',
+        structure: 'bearish',
+        headerLabel: 'bearish range pressure',
+        spotPrice: 66700.12,
+      },
+      eth: {
+        summary: 'ETH context limited.',
+        vsbtc: 'ETH/BTC rising — ETH gaining vs BTC (+3.0% over 7d)',
+        keyLevels: ['2142'],
+        headerLabel: 'ETH/BTC 7d resilience',
+        ethUsd24hLabel: 'neutral',
+        spotPrice: 1877.45,
+      },
+    }));
+
+    expect(html).toContain('₿ BTC · 🔴 bearish range pressure');
+    expect(html).toContain('Confidence: high → medium');
+    expect(html).toContain('BTC position changed.');
+    expect(html).not.toContain('trading inside.');
+    expect(html).toContain('Spot: <code>66,700.12</code>');
+    expect(html).toContain('Spot: <code>1,877.45</code>');
+    expect(html).toContain('BTC remains inside the 4H range, but below daily and weekly midpoints, leaving pressure.');
+    expect(html).not.toContain('leaving pressure to the downside');
+    expect(html).not.toContain('₿ BTC · 🟡 range');
+  });
+
+  it('shows ETH/USD 24h as not shown when metadata is unavailable', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      eth: {
+        summary: 'ETH context limited.',
+        vsbtc: 'ETH/BTC rising — ETH gaining vs BTC (+3.0% over 7d)',
+        keyLevels: ['2142'],
+        headerLabel: 'ETH/BTC 7d resilience',
+        ethUsd24hLabel: 'unknown',
+      },
+    }));
+
+    expect(html).toContain('ETH/BTC rising — ETH gaining vs BTC');
+    expect(html).toContain('ETH/USD 24h: not shown');
+  });
+
+  it('renders production broad alt perp tape scope', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      alts: {
+        summary: 'Broad alt perps are positive.',
+        rotationState: 'broad_rotation',
+        breadth: '61% of 74 liquid alt perps positive on 24h',
+        sourceScope: 'broad_alt_perp_tape',
+        universeName: 'Bybit/Binance/OKX liquid USDT perp tape',
+        canRenderBroadLabel: true,
+      },
+    }));
+
+    expect(html).toContain('🌊 Alts · ⚪ broad perp rotation');
+    expect(html).toContain('Breadth: 61% of 74 liquid alt perps positive on 24h');
+    expect(html).toContain('Scope: Bybit/Binance/OKX liquid USDT perp tape');
+    expect(html).not.toContain('tracked basket');
+  });
+
+  it('renders mixed broad perp tape as breadth-scoped, not broad rotation', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      alts: {
+        summary: 'Broad alt perps are mixed.',
+        rotationState: 'selective_rotation',
+        breadth: '53% of 74 liquid alt perps positive on 24h',
+        sourceScope: 'broad_alt_perp_tape',
+        universeName: 'Bybit/Binance/OKX liquid USDT perp tape',
+        canRenderBroadLabel: true,
+      },
+    }));
+
+    expect(html).toContain('🌊 Alts · 🟡 broad perp breadth mixed');
+    expect(html).toContain('Breadth: 53% of 74 liquid alt perps positive on 24h');
+    expect(html).not.toContain('Rotation: broad rotation');
+  });
+
+  it('renders cross-venue derivatives as funding-confirmed when OI trend coverage is incomplete', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      briefConfidence: 'medium',
+      confidenceBreakdown: {
+        signalClarity: 0.9,
+        dataCoverage: 0.7,
+        venueAgreement: 0.45,
+        ambiguityPenalty: 0.3,
+        finalScore: 0.65,
+        label: 'medium',
+        reasons: ['Derivatives are source-scoped, so high confidence is capped.'],
+      },
+      derivatives: {
+        summary: 'Neutral.',
+        funding: 'neutral on 3/3 venues',
+        oi: 'neutral on 1/3 venues; OI present without change window on OKX',
+        positioning: 'no venue-confirmed stress signal',
+        sourceScope: 'cross_venue',
+        verificationStatus: 'source_scoped',
+      },
+    }));
+
+    expect(html).toContain('<b>Reason:</b> OI trend coverage is incomplete, so high confidence is capped.');
+    expect(html).toContain('📊 Derivs · ⚫ funding confirmed, OI incomplete');
+    expect(html).toContain('Funding: neutral on 3/3 venues');
+    expect(html).toContain('OI trend: neutral on 1/3 venues; OKX has present OI only, no change window');
+    expect(html).not.toContain('coverage-scoped');
+  });
+
+  it('renders coverage and real ETF flow context when present', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      coverage: {
+        summary: 'Core price 3/3 · Funding 3/3 · OI 1/3 · Options Deribit · Events 6 feeds',
+      },
+      flows: {
+        bullets: [
+          'BTC ETF flows: -$519.0M daily · sosovalue',
+          'ETH ETF flows: -$90.0M daily · sosovalue',
+          'Flow tone: daily outflows',
+        ],
+      },
+    }));
+
+    expect(html).toContain('<b>Coverage:</b> Core price 3/3 · Funding 3/3 · OI 1/3 · Options Deribit · Events 6 feeds');
+    expect(html).toContain('<b>🏦 Flows</b>');
+    expect(html).toContain('BTC ETF flows: -$519.0M daily · sosovalue');
+    expect(html).toContain('ETH ETF flows: -$90.0M daily · sosovalue');
+    expect(html).toContain('Flow tone: daily outflows');
   });
 
 });

@@ -10,6 +10,7 @@ import type {
   DataStatus,
   PreviousBriefContext,
   PrecomputedRegime,
+  BtcPresentationContext,
   AltsBreadthSummary,
   DerivativesNarrativeSummary,
   PrecomputedEvents,
@@ -40,6 +41,7 @@ export class OverviewInputBuilder {
     dataStatus?: DataStatus;
     previousBrief?: PreviousBriefContext;
     precomputedRegime?: PrecomputedRegime;
+    precomputedBtcPresentation?: BtcPresentationContext;
     altsBreadth?: AltsBreadthSummary;
     derivativesNarrative?: DerivativesNarrativeSummary;
     precomputedEvents?: PrecomputedEvents;
@@ -90,6 +92,7 @@ export class OverviewInputBuilder {
       ...(params.dataStatus !== undefined ? { dataStatus: params.dataStatus } : {}),
       ...(params.previousBrief !== undefined ? { previousBrief: params.previousBrief } : {}),
       ...(params.precomputedRegime !== undefined ? { precomputedRegime: params.precomputedRegime } : {}),
+      ...(params.precomputedBtcPresentation !== undefined ? { precomputedBtcPresentation: params.precomputedBtcPresentation } : {}),
       ...(params.altsBreadth !== undefined ? { altsBreadth: params.altsBreadth } : {}),
       ...(params.derivativesNarrative !== undefined ? { derivativesNarrative: params.derivativesNarrative } : {}),
       ...(params.precomputedEvents !== undefined ? { precomputedEvents: params.precomputedEvents } : {}),

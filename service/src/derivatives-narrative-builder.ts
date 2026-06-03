@@ -51,6 +51,12 @@ function buildStatusNarrative(
   return entries.map((e) => `${e.label} on ${e.sym}`).join(', ');
 }
 
+function presentWithoutChangeVenues(consensus: DerivativesConsensus): string[] {
+  return consensus.openInterest.perVenue
+    .filter((row) => row.reason === 'OI present without change window')
+    .map((row) => row.venue.toUpperCase());
+}
+
 export function buildDerivativesNarrative(
   contexts: Record<string, DerivativesContext>,
   prioritySymbols: string[] = ['BTCUSDT', 'ETHUSDT'],
@@ -65,9 +71,13 @@ export function buildDerivativesNarrative(
     const oiLabel = consensus.openInterest.direction === 'mixed'
       ? consensus.openInterest.perVenue.map((row) => `${row.venue} ${row.direction}`).join(', ')
       : `${consensus.openInterest.direction} on ${oiVenues}/${consensus.openInterest.venuesRequired.length} venues`;
+    const presentOnlyOi = presentWithoutChangeVenues(consensus);
+    const oiWithCoverageNote = presentOnlyOi.length > 0
+      ? `${oiLabel}; OI present without change window on ${presentOnlyOi.join('/')}`
+      : oiLabel;
     return {
       funding: fundingLabel,
-      oi: oiLabel,
+      oi: oiWithCoverageNote,
       positioning: consensus.combinedLabel === 'mixed'
         ? 'mixed cross-venue derivatives signal'
         : 'no venue-confirmed stress signal',

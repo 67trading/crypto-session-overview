@@ -74,6 +74,60 @@ function compactComplete(text: string, maxChars: number): string {
   return slice.trim();
 }
 
+function compactSentence(text: string, maxChars: number): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxChars) return normalized;
+
+  const slice = normalized.slice(0, maxChars).trimEnd();
+  const boundary = Math.max(slice.lastIndexOf('.'), slice.lastIndexOf(';'));
+  if (boundary >= Math.floor(maxChars * 0.55)) return slice.slice(0, boundary + 1).trim();
+
+  const wordBoundary = slice.lastIndexOf(' ');
+  const stem = wordBoundary >= Math.floor(maxChars * 0.55) ? slice.slice(0, wordBoundary).trim() : slice.trim();
+  return stem.replace(/[,:;\s]+$/g, '') + '.';
+}
+
+function compactChangedBullet(text: string, maxChars: number): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  const arrowMatch = normalized.match(/^(Alt breadth:)\s+(.+?)\s+→\s+(.+)$/);
+  if (arrowMatch !== null) {
+    const [, label, prev, curr] = arrowMatch;
+    const prevShort = prev!.replace(/\s+on 24h$/i, '');
+    const currShort = curr!.replace(/\s+on 24h$/i, '');
+    const candidate = `${label} ${prevShort} → ${currShort}.`;
+    if (candidate.length <= maxChars) return candidate;
+  }
+  if (normalized.length > maxChars) {
+    const fieldChangeMatch = normalized.match(/^([^:]{1,40}):\s+.+\s+→\s+.+$/);
+    if (fieldChangeMatch !== null) return `${fieldChangeMatch[1]} changed.`;
+  }
+  return compactSentence(normalized, maxChars);
+}
+
+function humanizeMarketLabel(text: string): string {
+  return text
+    .replace(/\bASIA_CRYPTO\b/g, 'Asia')
+    .replace(/\bEUROPE_CRYPTO\b/g, 'Europe')
+    .replace(/\bUS_CRYPTO\b/g, 'US')
+    .replace(/\bfront_expiry\b/g, 'front expiry')
+    .replace(/\bDaily Open \/ Current Session Open\b/g, 'daily / session open')
+    .replace(/\bDaily Open\b/g, 'daily open')
+    .replace(/\bCurrent Session Open\b/g, 'session open')
+    .replace(/\bsession high\b/gi, 'session high')
+    .replace(/\bsession low\b/gi, 'session low');
+}
+
+function toUtcCompact(utcIso: string): string {
+  const date = new Date(utcIso);
+  if (Number.isNaN(date.getTime())) return utcIso;
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hour = String(date.getUTCHours()).padStart(2, '0');
+  const minute = String(date.getUTCMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hour}:${minute} UTC`;
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -221,6 +275,41 @@ function formatRegimeForTelegram(output: OverviewOutput): string {
   return output.marketRegime.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function formatAltRotation(output: OverviewOutput): string {
+  const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string };
+  if (altsMeta.sourceScope === 'broad_alt_perp_tape') {
+    if ((altsMeta as { canRenderBroadLabel?: boolean }).canRenderBroadLabel === false || output.alts.rotationState === 'unknown') return 'unavailable';
+    if (output.alts.rotationState === 'broad_rotation') return 'broad perp rotation';
+    if (output.alts.rotationState === 'selective_rotation') return 'broad perp breadth mixed';
+    if (output.alts.rotationState === 'weak') return 'broad perp weakness';
+    if (output.alts.rotationState === 'no_rotation') return 'weak perp tape';
+  }
+  if (altsMeta.sourceScope === 'tracked_basket') {
+    return 'unavailable';
+  }
+  return output.alts.rotationState.replace(/_/g, ' ');
+}
+
+function formatAltScope(output: OverviewOutput): string {
+  const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string; universeName?: string; minVolumeUsd?: number };
+  if (altsMeta.sourceScope === 'broad_alt_perp_tape') {
+    return altsMeta.universeName ?? 'Bybit/Binance/OKX liquid USDT perp tape';
+  }
+  if (altsMeta.sourceScope === 'market_wide_top_n') return 'market-cap universe';
+  return 'broad alt perp tape unavailable; configured symbols are not used for production Alts breadth';
+}
+
+function formatEthUsd24hLabel(output: OverviewOutput): string {
+  const ethMeta = output.eth as OverviewOutput['eth'] & { ethUsd24hLabel?: string };
+  const label = ethMeta.ethUsd24hLabel;
+  return label === 'strong' || label === 'weak' || label === 'neutral' ? label : 'not shown';
+}
+
+function formatSpotPrice(value: number | undefined): string | undefined {
+  if (value === undefined || !Number.isFinite(value)) return undefined;
+  return Number(value.toFixed(2)).toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
 function eventMarker(importance: string): string {
   if (importance === 'critical' || importance === 'high') return '🔴';
   if (importance === 'medium') return '🟠';
@@ -234,6 +323,27 @@ function eventTimePrefix(displayTimeType: string | undefined): string {
   if (displayTimeType === 'publishedAt') return 'announced';
   if (displayTimeType === 'detectedAt') return 'detected';
   return '';
+}
+
+function formatConfidenceReason(output: OverviewOutput): string | undefined {
+  const derivativesMeta = output.derivatives as OverviewOutput['derivatives'] & { sourceScope?: string; verificationStatus?: string };
+  if (derivativesMeta.sourceScope === 'cross_venue' && derivativesMeta.verificationStatus !== 'confirmed_cross_venue') {
+    return 'OI trend coverage is incomplete, so high confidence is capped.';
+  }
+  return output.confidenceBreakdown?.reasons[0];
+}
+
+function formatDerivativesOi(oi: string): string {
+  const match = oi.match(/^(.*?);\s*OI present without change window on (.+)$/i);
+  if (match !== null) {
+    return `${match[1]}; ${match[2]} has present OI only, no change window`;
+  }
+  return oi;
+}
+
+function formatEventDetail(detail: string): string {
+  if (detail === 'Effective time not parsed.') return 'Effective/trading-end time not parsed.';
+  return detail;
 }
 
 function isInitialRead(output: OverviewOutput): boolean {
@@ -272,7 +382,7 @@ export class OverviewFormatter {
     if (output.btc.keyLevels.length > 0) {
       lines.push(`Key levels: ${compact(output.btc.keyLevels.join(' · '), MAX_LEVELS_CHARS)}`);
     }
-    lines.push(`Position: ${compact(output.btc.position, MAX_DETAIL_CHARS)}  |  Structure: ${output.btc.structure}`);
+    lines.push(`Position: ${compact(output.btc.position, MAX_DETAIL_CHARS)}  |  Structure: ${output.btc.headerLabel ?? output.btc.structure}`);
     lines.push('');
 
     // ETH
@@ -288,7 +398,7 @@ export class OverviewFormatter {
     lines.push('🌊 Alts');
     pushIfNonEmpty(lines, compact(output.alts.summary, MAX_SUMMARY_CHARS));
     lines.push(
-      `Rotation: ${output.alts.rotationState.replace(/_/g, ' ')}  |  Breadth: ${compact(output.alts.breadth, MAX_DETAIL_CHARS)}`,
+      `Rotation: ${formatAltRotation(output)}  |  Breadth: ${compact(output.alts.breadth, MAX_DETAIL_CHARS)}`,
     );
     lines.push('');
 
@@ -363,7 +473,7 @@ export class OverviewFormatter {
   formatCompact(output: OverviewOutput): string {
     const label = SESSION_LABEL[output.session];
     const regimeDisplay = output.marketRegime.replace(/_/g, ' ');
-    const rotationDisplay = output.alts.rotationState.replace(/_/g, ' ');
+    const rotationDisplay = formatAltRotation(output);
     const btcLevels = formatLevels(output.btc.keyLevels, 90);
     const ethLevels = formatLevels(output.eth.keyLevels, 70);
     const highImpactEvents = output.events.upcoming.filter((ev) =>
@@ -382,7 +492,7 @@ export class OverviewFormatter {
     }
 
     lines.push('');
-    lines.push(`₿ BTC: ${output.btc.structure} · ${compact(output.btc.position, COMPACT_DETAIL_CHARS)}`);
+    lines.push(`₿ BTC: ${output.btc.headerLabel ?? output.btc.structure} · ${compact(output.btc.position, COMPACT_DETAIL_CHARS)}`);
     pushIfNonEmpty(lines, compact(output.btc.summary, COMPACT_SUMMARY_CHARS));
     if (btcLevels !== undefined) lines.push(`Levels: ${btcLevels}`);
 
@@ -431,21 +541,32 @@ export class OverviewFormatter {
     const label = SESSION_LABEL[output.session];
     const regimeDisplay = formatRegimeForTelegram(output);
     const regimeMarker = marketMarker(output.marketRegime);
+    const btcHeader = output.btc.headerLabel ?? output.btc.structure;
     const btcMarker = marketMarker(output.btc.structure);
     const ethMeta = output.eth as OverviewOutput['eth'] & { headerLabel?: string; ethUsd24hLabel?: string };
     const ethHeader = ethMeta.headerLabel ?? 'ETH context';
     const ethMarker = marketMarker(`${output.eth.vsbtc} ${ethHeader}`);
     const altsMarker = marketMarker(`${output.alts.rotationState} ${output.alts.breadth}`);
-    const derivativesMeta = output.derivatives as OverviewOutput['derivatives'] & { sourceScope?: string };
+    const derivativesMeta = output.derivatives as OverviewOutput['derivatives'] & { sourceScope?: string; verificationStatus?: string };
     const derivativesMarker = marketMarker(output.derivatives.positioning);
-    const rotationDisplay = output.alts.rotationState.replace(/_/g, ' ');
+    const rotationDisplay = formatAltRotation(output);
     const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string };
-    const altsHeader = altsMeta.sourceScope === 'tracked_basket'
-      ? 'tracked basket rotation'
+    const altsHeader = altsMeta.sourceScope === 'broad_alt_perp_tape' && (altsMeta as { canRenderBroadLabel?: boolean }).canRenderBroadLabel !== false && output.alts.rotationState !== 'unknown'
+      ? formatAltRotation(output)
+      : altsMeta.sourceScope === 'broad_alt_perp_tape'
+      ? 'unavailable'
+      : altsMeta.sourceScope === 'tracked_basket'
+      ? 'unavailable'
       : rotationDisplay;
-    const derivativesHeader = derivativesMeta.sourceScope === 'single_venue'
+    const derivativesHeader = derivativesMeta.sourceScope === 'cross_venue' && derivativesMeta.verificationStatus === 'confirmed_cross_venue'
+      ? 'cross-venue neutral'
+      : derivativesMeta.sourceScope === 'cross_venue'
+      ? 'funding confirmed, OI incomplete'
+      : derivativesMeta.sourceScope === 'single_venue'
       ? 'Bybit-scoped neutral'
       : output.derivatives.positioning.toLowerCase().includes('neutral') || output.derivatives.positioning.toLowerCase().includes('balanced') ? 'neutral' : 'positioning';
+    const btcSpot = formatSpotPrice(output.btc.spotPrice);
+    const ethSpot = formatSpotPrice(output.eth.spotPrice);
     const btcLevels = formatHtmlLevels(output.btc.keyLevels, 2);
     const ethLevels = formatHtmlLevels(output.eth.keyLevels, 2);
     const highImpactEvents = output.events.upcoming.filter((ev) =>
@@ -453,38 +574,45 @@ export class OverviewFormatter {
     );
     const eventLines = highImpactEvents.length > 0
       ? highImpactEvents.slice(0, 3).map((ev) =>
-          `${eventMarker(ev.importance)} ${escapeHtml(compactComplete(ev.title, 80))} · ${escapeHtml(eventTimePrefix((ev as { displayTimeType?: string }).displayTimeType))}${eventTimePrefix((ev as { displayTimeType?: string }).displayTimeType) === '' ? '' : ' '}${code(compactComplete(ev.time, 42))}`
+          `${eventMarker(ev.importance)} ${escapeHtml(compactComplete(ev.title, 80))} · ${escapeHtml(eventTimePrefix((ev as { displayTimeType?: string }).displayTimeType))}${eventTimePrefix((ev as { displayTimeType?: string }).displayTimeType) === '' ? '' : ' '}${code(toUtcCompact(ev.time))}`
         )
       : output.events.upcoming.length > 0 || output.events.summary.trim() !== ''
         ? ['🔵 No high-impact BTC/ETH event confirmed']
         : ['⚪ No event source update'];
 
     const changed = output.whatChanged.slice(0, 2).map((bullet) =>
-      `${isInitialRead(output) ? '⚪' : '✅'} ${escapeHtml(compactComplete(bullet, 95))}`
+      `${isInitialRead(output) ? '⚪' : '✅'} ${escapeHtml(compactChangedBullet(bullet, 95))}`
     );
     const btcBullets = [
+      ...(btcSpot !== undefined ? [`• Spot: ${code(btcSpot)}`] : []),
       `• ${escapeHtml(compactComplete(output.btc.position, 80))}`,
-      `• ${escapeHtml(compactComplete(output.btc.summary, 90))}`,
+      `• ${escapeHtml(compactSentence(output.btc.summary, 90))}`,
       ...btcLevels.map((level, index) => `• ${index === 0 ? 'Recovery/ref' : 'Resistance/ref'}: ${level}`),
-    ].filter((line) => line.trim() !== '•').slice(0, 4);
+    ].filter((line) => line.trim() !== '•').slice(0, 5);
     const ethBullets = [
+      ...(ethSpot !== undefined ? [`• Spot: ${code(ethSpot)}`] : []),
       `• ${escapeHtml(compactComplete(output.eth.vsbtc, 90))}`,
+      `• ETH/USD 24h: ${escapeHtml(formatEthUsd24hLabel(output))}`,
       ...ethLevels.map((level) => `• Ref: ${level}`),
-      `• ${escapeHtml(compactComplete(output.eth.summary, 80))}`,
-    ].filter((line) => line.trim() !== '•').slice(0, 3);
+      `• ${escapeHtml(compactSentence(output.eth.summary, 80))}`,
+    ].filter((line) => line.trim() !== '•').slice(0, 4);
     const altsBullets = [
       `Breadth: ${compactComplete(output.alts.breadth, 80)}`,
-      `Rotation: ${rotationDisplay}`,
+      `Scope: ${formatAltScope(output)}`,
     ];
-    const derivativesSuffix = derivativesMeta.sourceScope === 'single_venue' ? ' · Bybit-scoped' : '';
+    const derivativesSuffix = derivativesMeta.sourceScope === 'single_venue'
+      ? ' · Bybit-scoped'
+      : '';
     const derivativesBullets = [
       `Funding: ${compactComplete(output.derivatives.funding, 52)}${derivativesSuffix}`,
-      `OI: ${compactComplete(output.derivatives.oi, 52)}${derivativesSuffix}`,
+      `OI trend: ${compactComplete(formatDerivativesOi(output.derivatives.oi), 92)}${derivativesSuffix}`,
       derivativesMeta.sourceScope === 'single_venue'
         ? `Positioning: ${compactComplete(output.derivatives.positioning, 42)}; broader venues not verified`
         : `Positioning: ${compactComplete(output.derivatives.positioning, 60)}`,
     ];
-    const confidenceReason = output.confidenceBreakdown?.reasons[0];
+    const coverageSummary = (output as OverviewOutput & { coverage?: { summary: string } }).coverage?.summary;
+    const flowBullets = (output as OverviewOutput & { flows?: { bullets: string[] } }).flows?.bullets ?? [];
+    const confidenceReason = formatConfidenceReason(output);
     const liquidityLines = compactHtmlLiquidityLines(output);
 
     const lines: string[] = [
@@ -493,11 +621,12 @@ export class OverviewFormatter {
       `${b('Regime:')} ${regimeMarker} ${escapeHtml(regimeDisplay)}`,
       `${b('Confidence:')} ${confidenceMarker(output.briefConfidence)} ${escapeHtml(output.briefConfidence)}`,
       ...(confidenceReason !== undefined ? [`${b('Reason:')} ${escapeHtml(compactComplete(confidenceReason, 105))}`] : []),
+      ...(coverageSummary !== undefined ? [`${b('Coverage:')} ${escapeHtml(compactComplete(coverageSummary, 130))}`] : []),
       '',
       b('📌 Changed'),
       ...(changed.length > 0 ? changed : ['⚪ Initial session read']),
       '',
-      `${b(`₿ BTC · ${btcMarker} ${output.btc.structure}`)}`,
+      `${b(`₿ BTC · ${btcMarker} ${btcHeader}`)}`,
       ...btcBullets,
       '',
       `${b(`Ξ ETH · ${ethMarker} ${ethHeader}`)}`,
@@ -510,10 +639,17 @@ export class OverviewFormatter {
       ...derivativesBullets.map((line) => `• ${escapeHtml(line)}`),
     ];
 
+    if (flowBullets.length > 0) {
+      lines.push('', b('🏦 Flows'));
+      for (const flow of flowBullets.slice(0, 3)) {
+        lines.push(`• ${escapeHtml(compactComplete(flow, 85))}`);
+      }
+    }
+
     if (liquidityLines.length > 0) {
       lines.push('', b('💧 Levels'));
       for (const line of liquidityLines) {
-        lines.push(`• ${escapeHtml(line.label)}: ${code(compactComplete(line.value, 70))}`);
+        lines.push(`• ${escapeHtml(line.label)}: ${code(compactComplete(humanizeMarketLabel(line.value), 70))}`);
       }
     }
 
@@ -523,7 +659,7 @@ export class OverviewFormatter {
       ...eventLines,
       ...highImpactEvents.slice(0, 1).flatMap((ev) => {
         const detail = (ev as { detail?: string }).detail;
-        return detail !== undefined ? [`• ${escapeHtml(compactComplete(detail, 85))}`] : [];
+        return detail !== undefined ? [`• ${escapeHtml(compactComplete(formatEventDetail(detail), 85))}`] : [];
       }),
       '',
       b('⚡ Scenarios'),

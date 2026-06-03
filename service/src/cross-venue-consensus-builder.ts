@@ -150,11 +150,13 @@ export function buildCrossVenueConsensus(snapshots: NormalizedVenueSnapshot[]): 
     }),
   });
 
+  const bothDerivativesConfirmed = funding.verificationStatus === 'confirmed_cross_venue'
+    && openInterest.verificationStatus === 'confirmed_cross_venue';
   const combinedLabel: DerivativesConsensus['combinedLabel'] =
     funding.verificationStatus === 'unavailable' && openInterest.verificationStatus === 'unavailable' ? 'unavailable'
     : funding.verificationStatus === 'ambiguous' || openInterest.verificationStatus === 'ambiguous' ? 'mixed'
     : funding.direction === 'mixed' || openInterest.direction === 'mixed' ? 'mixed'
-    : funding.verificationStatus !== 'confirmed_cross_venue' && openInterest.verificationStatus !== 'confirmed_cross_venue' ? 'single_source'
+    : !bothDerivativesConfirmed ? 'single_source'
     : funding.direction === 'neutral' && openInterest.direction === 'neutral' ? 'cross_venue_neutral'
     : funding.direction === 'bullish' || openInterest.direction === 'bullish' ? 'cross_venue_bullish'
     : funding.direction === 'bearish' || openInterest.direction === 'bearish' ? 'cross_venue_bearish'

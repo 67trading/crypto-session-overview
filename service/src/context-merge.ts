@@ -100,8 +100,9 @@ export function mergeBreadthContext(
   if (result.data === undefined) return input;
   const existing = input.altsBreadth;
   if (existing === undefined) return { ...input, altsBreadth: result.data };
-  // New data fills in additional fields; existing fields take priority
-  return { ...input, altsBreadth: { ...result.data, ...existing } };
+  if (result.data.sourceScope === 'broad_alt_perp_tape') return { ...input, altsBreadth: result.data };
+  if (existing.sourceScope === 'broad_alt_perp_tape') return input;
+  return { ...input, altsBreadth: result.data };
 }
 
 export function mergeNormalizedVenueSnapshots(

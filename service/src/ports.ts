@@ -52,11 +52,24 @@ export type PrecomputedRegime = {
   briefConfidence: 'low' | 'medium' | 'high';
 };
 
+export type BtcPresentationContext = {
+  symbol: 'BTCUSDT';
+  structure: OverviewOutput['btc']['structure'];
+  headerLabel: string;
+  position: string;
+  summary: string;
+  keyLevelsDisplay: string[];
+  spotPrice?: number;
+  source: 'deterministic_htf_levels';
+};
+
 export type Venue = 'bybit' | 'binance' | 'okx' | 'deribit';
 export type SourceScope =
   | 'single_venue'
   | 'cross_venue'
   | 'tracked_basket'
+  | 'broad_alt_perp_tape'
+  | 'market_wide_top_n'
   | 'market_wide'
   | 'options_exchange'
   | 'announcement_source'
@@ -190,6 +203,13 @@ export type AltsBreadthSummary = {
   basketName?: string;
   symbols?: string[];
   timeBasis?: TimeBasis;
+  universeName?: string;
+  negativeCount?: number;
+  neutralCount?: number;
+  minVolumeUsd?: number;
+  venues?: Venue[];
+  unavailableReason?: string;
+  canRenderBroadLabel?: boolean;
 };
 
 export type DerivativesNarrativeSummary = {
@@ -403,6 +423,7 @@ export type OverviewInput = {
   dataStatus?: DataStatus;
   previousBrief?: PreviousBriefContext;
   precomputedRegime?: PrecomputedRegime;
+  precomputedBtcPresentation?: BtcPresentationContext;
   altsBreadth?: AltsBreadthSummary;
   derivativesNarrative?: DerivativesNarrativeSummary;
   precomputedEvents?: PrecomputedEvents;

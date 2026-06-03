@@ -19,7 +19,7 @@ import { computeDataStatus, buildSourceHealthSummary, type EnrichedCollectorQual
 import { computeWhatChanged, firstBriefBullets } from './brief-diff-engine.js';
 import { checkOutputInvariants, checkSourceAwareOutputInvariants, hasHardViolations } from './output-invariants.js';
 import { classifyMarketRegime } from './market-regime-classifier.js';
-import { analyzeAltsBreadth } from './alts-breadth-analyzer.js';
+import { unavailableBroadAltPerpTape } from './alts-breadth-analyzer.js';
 import { buildDerivativesNarrative } from './derivatives-narrative-builder.js';
 import { preprocessEvents } from './events-preprocessor.js';
 import { analyzeCrossMarket } from './cross-market-analyzer.js';
@@ -27,6 +27,7 @@ import { PRODUCT_FOOTER_NOTE, buildPresentationContext } from './presentation-co
 import { computeReportConfidence } from './market-regime-confidence.js';
 import { buildDeterministicScenarios } from './scenario-builder.js';
 import { buildCrossVenueConsensus } from './cross-venue-consensus-builder.js';
+import { buildBtcPresentationContext, btcPresentationToOutput } from './btc-presentation-builder.js';
 import { metrics } from './metrics.js';
 import {
   computeWeeklyLevels,
@@ -183,17 +184,81 @@ function fallbackStructure(levels: OverviewInput['levels'][string] | undefined):
   return levels?.fourHour?.structure ?? 'unknown';
 }
 
+function deriveBtcTone(
+  btcSnapshot: OverviewMarketSnapshot | undefined,
+  btcLevels: HtfLevelsSnapshot | undefined,
+): string {
+  if (btcSnapshot === undefined || btcLevels === undefined) return 'unknown';
+  const price = btcSnapshot.latestPrice;
+  if (btcLevels.weekly !== null && price > btcLevels.weekly.previousWeekHigh) return 'bullish_breakout';
+  if (btcLevels.weekly !== null && price < btcLevels.weekly.previousWeekLow) return 'bearish_breakdown';
+  if (btcLevels.daily !== null && price > btcLevels.daily.dailyMidpoint) return 'constructive';
+  if (btcLevels.daily !== null && price < btcLevels.daily.dailyMidpoint) return 'weak';
+  return 'neutral';
+}
+
 function buildOptionsReference(options: OverviewInput['optionsContext'] | undefined): string | undefined {
   const btcOptions = options?.find((option) => option.symbol === 'BTC' || option.currency === 'BTC');
   if (btcOptions === undefined) return undefined;
   const selected = btcOptions.selectedMaxPain;
   if (selected !== undefined) {
-    return `${selected.maxPain} max pain · Deribit · ${btcOptions.expiryScope ?? 'front_expiry'} ${selected.expiryDate}`;
+    return `${selected.maxPain} max pain · Deribit · ${(btcOptions.expiryScope ?? 'front_expiry').replace(/_/g, ' ')} ${selected.expiryDate}`;
   }
   if (btcOptions.maxPainStrike !== undefined) {
     return `${btcOptions.maxPainStrike} max pain · Deribit · expiry scope unclear`;
   }
   return undefined;
+}
+
+function formatSignedUsd(value: number): string {
+  const sign = value >= 0 ? '+' : '-';
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `${sign}$${(abs / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  return `${sign}$${abs.toFixed(0)}`;
+}
+
+function buildCoverageSummary(input: OverviewInput): string | undefined {
+  const consensus = input.crossVenueConsensus;
+  if (consensus === undefined) return undefined;
+  const optionScope = input.optionsContext?.some((option) =>
+    option.source === 'deribit'
+    || option.symbol === 'BTC'
+    || option.symbol === 'ETH'
+    || option.currency === 'BTC'
+    || option.currency === 'ETH'
+  )
+    ? 'Options Deribit'
+    : 'Options unavailable';
+  const eventSources = input.sourceHealth?.collectors.filter((collector) =>
+    ['bybit-announcements', 'binance-announcements', 'fed-calendar', 'bls-calendar', 'sec-rss', 'mobula-unlocks', 'coinmarketcal'].includes(collector.name)
+    && (collector.status === 'success' || collector.status === 'partial')
+  ).length ?? 0;
+  const eventsScope = eventSources > 0 ? `Events ${eventSources} feeds` : 'Events unavailable';
+  return [
+    `Core price ${consensus.price.venuesAvailable.length}/${consensus.price.venuesRequired.length}`,
+    `Funding ${consensus.derivatives.funding.venuesAvailable.length}/${consensus.derivatives.funding.venuesRequired.length}`,
+    `OI ${consensus.derivatives.openInterest.venuesAvailable.length}/${consensus.derivatives.openInterest.venuesRequired.length}`,
+    optionScope,
+    eventsScope,
+  ].join(' · ');
+}
+
+function buildFlowBullets(input: OverviewInput): string[] {
+  const etf = input.etfFlowContext;
+  if (etf?.sourceAvailable !== true) return [];
+  const label = etf.isProxy === true ? 'ETF holdings proxy' : 'ETF flows';
+  const suffix = `daily · ${etf.source}`;
+  const bullets: string[] = [];
+  if (etf.btcFlowUsd !== undefined) bullets.push(`BTC ${label}: ${formatSignedUsd(etf.btcFlowUsd)} ${suffix}`);
+  if (etf.ethFlowUsd !== undefined) bullets.push(`ETH ${label}: ${formatSignedUsd(etf.ethFlowUsd)} ${suffix}`);
+  if (etf.isProxy !== true) {
+    const values = [etf.btcFlowUsd, etf.ethFlowUsd].filter((value): value is number => value !== undefined);
+    if (values.length > 0 && values.every((value) => value < 0)) bullets.push('Flow tone: daily outflows');
+    else if (values.length > 0 && values.every((value) => value > 0)) bullets.push('Flow tone: daily inflows');
+    else if (values.length > 1) bullets.push('Flow tone: mixed daily flows');
+  }
+  return bullets;
 }
 
 function buildDeterministicFallbackOverview(params: {
@@ -539,6 +604,7 @@ export class OverviewRunner {
 
       // 5b. Build session context using BTC as the reference instrument
       const btcSnapshot = marketSnapshots.find((s) => s.symbol === 'BTCUSDT');
+      const ethSnapshot = marketSnapshots.find((s) => s.symbol === 'ETHUSDT');
       const sessionCtx = btcSnapshot !== undefined
         ? buildSessionContext(
             session,
@@ -548,8 +614,9 @@ export class OverviewRunner {
           )
         : null;
 
-      // 5c. Analyze alts breadth from market snapshots
-      const altsBreadth = analyzeAltsBreadth(marketSnapshots);
+      // 5c. Production Alts breadth must come from a broad alt universe collector,
+      // not from configured run/watchlist symbols.
+      const altsBreadth = unavailableBroadAltPerpTape('broad alt perp tape collector did not provide data');
 
       // 5d. Build derivatives narrative from status enums
       let derivativesNarrative = buildDerivativesNarrative(derivativesContext);
@@ -580,17 +647,9 @@ export class OverviewRunner {
       // 7b. Pre-compute market regime + confidence from deterministic signals
       const btcLevels = levels['BTCUSDT'];
       const btcDerivatives = derivativesContext['BTCUSDT'];
+      const deterministicBtcTone = deriveBtcTone(btcSnapshot, btcLevels);
       const precomputedRegime = classifyMarketRegime({
-        btcTone: btcSnapshot !== undefined && btcLevels !== undefined
-          ? (() => {
-              const price = btcSnapshot.latestPrice;
-              if (btcLevels.weekly !== null && price > btcLevels.weekly.previousWeekHigh) return 'bullish_breakout';
-              if (btcLevels.weekly !== null && price < btcLevels.weekly.previousWeekLow) return 'bearish_breakdown';
-              if (btcLevels.daily !== null && price > btcLevels.daily.dailyMidpoint) return 'constructive';
-              if (btcLevels.daily !== null && price < btcLevels.daily.dailyMidpoint) return 'weak';
-              return 'neutral';
-            })()
-          : 'unknown',
+        btcTone: deterministicBtcTone,
         btcFourHourStructure: btcLevels?.fourHour?.structure ?? 'unknown',
         btcWeeklyPosition: btcLevels?.weekly?.weeklyPosition ?? null,
         btcDailyPosition: btcLevels?.daily?.dailyPosition ?? null,
@@ -599,6 +658,11 @@ export class OverviewRunner {
         btcPositioning: btcDerivatives?.positioningStatus ?? 'unknown',
         hasCriticalEvents: precomputedEvents.hasCritical,
         dataStatus,
+      });
+      const btcPresentation = buildBtcPresentationContext({
+        btcTone: deterministicBtcTone,
+        levels: btcLevels,
+        ...(btcSnapshot !== undefined ? { spotPrice: btcSnapshot.latestPrice } : {}),
       });
 
       const input = this.inputBuilder.build({
@@ -615,6 +679,7 @@ export class OverviewRunner {
         dataStatus,
         ...(previousBrief !== undefined ? { previousBrief } : {}),
         precomputedRegime,
+        precomputedBtcPresentation: btcPresentation,
         altsBreadth,
         derivativesNarrative,
         precomputedEvents,
@@ -662,6 +727,7 @@ export class OverviewRunner {
       }
 
       const crossVenueConsensus = buildCrossVenueConsensus(augmentedInput.normalizedVenueSnapshots ?? []);
+      const finalAltsBreadth = augmentedInput.altsBreadth ?? altsBreadth;
       derivativesNarrative = buildDerivativesNarrative(
         derivativesContext,
         ['BTCUSDT', 'ETHUSDT'],
@@ -686,7 +752,7 @@ export class OverviewRunner {
         dataStatus,
         btcLevels,
         derivativesNarrative,
-        altsBreadth,
+        altsBreadth: finalAltsBreadth,
         crossMarket,
         crossVenueConsensus,
         options: augmentedInput.optionsContext,
@@ -696,9 +762,15 @@ export class OverviewRunner {
         ...precomputedRegime,
         briefConfidence: confidenceBreakdown.label,
       };
+      const finalBtcPresentation = buildBtcPresentationContext({
+        btcTone: deterministicBtcTone,
+        levels: btcLevels,
+        ...(btcSnapshot !== undefined ? { spotPrice: btcSnapshot.latestPrice } : {}),
+      });
       augmentedInput = {
         ...augmentedInput,
         precomputedRegime: confidenceAdjustedRegime,
+        precomputedBtcPresentation: finalBtcPresentation,
         confidenceBreakdown,
       };
       augmentedInput = {
@@ -735,7 +807,7 @@ export class OverviewRunner {
             input: augmentedInput,
             precomputedRegime: confidenceAdjustedRegime,
             dataStatus,
-            altsBreadth,
+            altsBreadth: finalAltsBreadth,
             derivativesNarrative,
             crossMarket,
             previousOutput,
@@ -748,6 +820,14 @@ export class OverviewRunner {
         marketRegime: confidenceAdjustedRegime.marketRegime,
         briefConfidence: confidenceAdjustedRegime.briefConfidence,
         confidenceBreakdown,
+        coverage: (() => {
+          const summary = buildCoverageSummary(augmentedInput);
+          return summary !== undefined ? { summary } : undefined;
+        })(),
+        flows: (() => {
+          const bullets = buildFlowBullets(augmentedInput);
+          return bullets.length > 0 ? { bullets } : undefined;
+        })(),
         // Use deterministic computed dataStatus, not LLM interpretation
         dataStatus,
         // Fallback liquidity if LLM did not generate it (transitional guard)
@@ -756,15 +836,16 @@ export class OverviewRunner {
         },
         alts: {
           ...llmResult.output.alts,
-          sourceScope: altsBreadth.sourceScope,
-          basketName: altsBreadth.basketName,
-          timeBasis: altsBreadth.timeBasis,
-          rotationState: altsBreadth.rotationState !== 'unknown'
-            ? altsBreadth.rotationState
-            : llmResult.output.alts.rotationState,
-          breadth: altsBreadth.totalTracked > 0
-            ? altsBreadth.breadthLabel
-            : llmResult.output.alts.breadth,
+          sourceScope: finalAltsBreadth.sourceScope,
+          basketName: finalAltsBreadth.basketName,
+          timeBasis: finalAltsBreadth.timeBasis,
+          universeName: finalAltsBreadth.universeName,
+          minVolumeUsd: finalAltsBreadth.minVolumeUsd,
+          venues: finalAltsBreadth.venues,
+          unavailableReason: finalAltsBreadth.unavailableReason,
+          canRenderBroadLabel: finalAltsBreadth.canRenderBroadLabel,
+          rotationState: finalAltsBreadth.rotationState,
+          breadth: finalAltsBreadth.breadthLabel,
         },
         derivatives: {
           ...llmResult.output.derivatives,
@@ -780,10 +861,12 @@ export class OverviewRunner {
             ? derivativesNarrative.positioning
             : llmResult.output.derivatives.positioning,
         },
+        btc: btcPresentationToOutput(finalBtcPresentation),
         eth: {
           ...llmResult.output.eth,
           headerLabel: crossMarket.ethHeaderLabel,
           ethUsd24hLabel: crossMarket.ethUsd24hLabel,
+          ...(ethSnapshot !== undefined ? { spotPrice: ethSnapshot.latestPrice } : {}),
           vsbtc: crossMarket.ethBtcTrendLabel !== 'data unavailable'
             ? crossMarket.ethBtcTrendLabel
             : llmResult.output.eth.vsbtc,

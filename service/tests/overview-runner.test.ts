@@ -28,6 +28,33 @@ function makeSnapshot(symbol: string, price: number): OverviewMarketSnapshot {
   };
 }
 
+function candle(open: number, high: number, low: number, close: number, offsetHours: number): HtfCandle {
+  const closeTimeMs = Date.now() + offsetHours * 3600_000;
+  return { openTimeMs: closeTimeMs - 3600_000, closeTimeMs, open, high, low, close, volume: 1000 };
+}
+
+function makeWeakRangeBtcSnapshot(): OverviewMarketSnapshot {
+  return {
+    symbol: 'BTCUSDT',
+    latestPrice: 66700,
+    candles: {
+      weekly: [
+        candle(70000, 78089.9, 65000, 67000, -24 * 7),
+        candle(67000, 69000, 65412, 66700, 0),
+      ],
+      daily: [
+        candle(67500, 71413.9, 66200, 66700, -24),
+        candle(66754.8, 67500, 65412, 66700, 0),
+      ],
+      fourHour: [
+        candle(66000, 74225.4, 65412, 67000, -8),
+        candle(67000, 68000, 66000, 66800, -4),
+        candle(66800, 67500, 66200, 66700, 0),
+      ],
+    },
+  };
+}
+
 function makeDerivatives(symbol: string): DerivativesContext {
   return { symbol, fundingStatus: 'neutral', oiStatus: 'stable', positioningStatus: 'balanced' };
 }
@@ -121,6 +148,51 @@ describe('OverviewRunner.run()', () => {
     expect(result.overviewId).toBe('overview-id-1');
     expect(result.session).toBe('US_CRYPTO');
     expect(result.telegramPublished).toBe(false);
+  });
+
+  it('overrides contradictory LLM BTC presentation with deterministic BTC context', async () => {
+    const repo = makeRepo();
+    const llmOutput = makeValidOutput();
+    llmOutput.btc = {
+      summary: 'BTC has continuation bullish tone from the previous session.',
+      keyLevels: ['97000'],
+      position: 'above daily midpoint',
+      structure: 'range',
+      spotPrice: 1,
+    };
+    llmOutput.eth.spotPrice = 2;
+    const deps = makeDeps({
+      repository: repo,
+      marketDataCollector: {
+        collect: vi.fn().mockResolvedValue([
+          makeWeakRangeBtcSnapshot(),
+          makeSnapshot('ETHUSDT', 1800),
+        ]),
+      },
+      llmClient: {
+        modelName: 'test-model',
+        generateOverview: vi.fn().mockResolvedValue({ output: llmOutput }),
+      },
+    });
+    const runner = new OverviewRunner(deps);
+
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.status).toBe('SUCCESS');
+    const saveCall = repo.saveOverview.mock.calls[0][0] as { outputJson: OverviewOutput };
+    expect(saveCall.outputJson.btc).toEqual(expect.objectContaining({
+      structure: 'bearish',
+      headerLabel: 'bearish range pressure',
+      position: 'Below daily midpoint and below weekly midpoint.',
+      summary: 'BTC remains inside the 4H range, but below daily and weekly midpoints, leaving pressure to the downside.',
+      keyLevels: [
+        '78,089.9 (previous week high)',
+        '74,225.4 (4H last swing high)',
+      ],
+      spotPrice: 66700,
+    }));
+    expect(saveCall.outputJson.eth.spotPrice).toBe(1800);
+    expect(saveCall.outputJson.btc.summary).not.toMatch(/continuation bullish/i);
   });
 
   it('returns an existing overview for the same session window unless force=true', async () => {
@@ -397,6 +469,62 @@ describe('OverviewRunner.run()', () => {
     expect(result.output?.alts.rotationState).not.toBe('broad_rotation');
     expect(result.output?.whatChanged.join(' ')).not.toContain('broad_rotation');
     expect(result.output?.whatChanged.join(' ')).not.toContain('90% positive');
+  });
+
+  it('does not use configured run symbols as production Alts breadth', async () => {
+    const deps = makeDeps({
+      marketDataCollector: {
+        collect: vi.fn().mockResolvedValue([
+          makeSnapshot('BTCUSDT', 97000),
+          makeSnapshot('ETHUSDT', 3200),
+          makeSnapshot('SOLUSDT', 180),
+          makeSnapshot('BNBUSDT', 650),
+          makeSnapshot('XRPUSDT', 2),
+        ]),
+      },
+    });
+    const runner = new OverviewRunner(deps);
+
+    const result = await runner.run({
+      ...RUN_OPTIONS,
+      symbols: { core: ['BTCUSDT', 'ETHUSDT'], major: ['SOLUSDT', 'BNBUSDT', 'XRPUSDT'], watch: [] },
+    });
+
+    expect(result.output?.alts.sourceScope).toBe('broad_alt_perp_tape');
+    expect(result.output?.alts.rotationState).toBe('unknown');
+    expect(result.output?.alts.breadth).toContain('Broad alt perp tape unavailable');
+    expect(result.output?.alts.breadth).not.toContain('tracked alts');
+  });
+
+  it('uses broad alt perp tape collector data for production Alts breadth', async () => {
+    const { contextCollectorEntry, mergeBreadthContext } = await import('../src/context-merge.js');
+    const broadBreadth = {
+      breadthPercent: 61,
+      positiveCount: 45,
+      negativeCount: 29,
+      neutralCount: 0,
+      totalTracked: 74,
+      breadthLabel: '61% of 74 liquid alt perps positive on 24h',
+      rotationState: 'selective_rotation' as const,
+      sourceScope: 'broad_alt_perp_tape' as const,
+      universeName: 'Bybit/Binance/OKX liquid USDT perp tape',
+      timeBasis: 'rolling_24h' as const,
+      canRenderBroadLabel: true,
+    };
+    const collector = {
+      sourceName: 'broad-alt-perp-tape',
+      collect: vi.fn().mockResolvedValue({ status: 'success', data: broadBreadth, itemCount: 74 }),
+    };
+    const runner = new OverviewRunner(makeDeps({
+      contextCollectors: [contextCollectorEntry(collector, mergeBreadthContext)],
+    }));
+
+    const result = await runner.run(RUN_OPTIONS);
+
+    expect(result.output?.alts.sourceScope).toBe('broad_alt_perp_tape');
+    expect(result.output?.alts.breadth).toBe('61% of 74 liquid alt perps positive on 24h');
+    expect(result.output?.alts.universeName).toBe('Bybit/Binance/OKX liquid USDT perp tape');
+    expect(result.output?.alts.canRenderBroadLabel).toBe(true);
   });
 
   it('uses a previous PUBLISHED_DEGRADED brief for diff context', async () => {
@@ -731,8 +859,8 @@ describe('OverviewRunner.run()', () => {
 
   it('logs invariant violations as warnings without failing the run', async () => {
     const badOutput = makeValidOutput();
-    // Violate: go long is a forbidden phrase outside deterministic scenario overrides.
-    badOutput.btc.summary = 'Go long above 98000 for ATH push.';
+    // Violate: go long is a forbidden phrase outside deterministic BTC/scenario overrides.
+    badOutput.derivatives.summary = 'Go long above 98000 for ATH push.';
 
     const logger = makeLogger();
     const deps = makeDeps({
@@ -758,7 +886,7 @@ describe('OverviewRunner.run()', () => {
 
   it('does not publish to Telegram when output has hard violations (forbidden phrase)', async () => {
     const badOutput = makeValidOutput();
-    badOutput.btc.summary = 'Go long above 98000.';
+    badOutput.derivatives.summary = 'Go long above 98000.';
 
     const publisher = { publish: vi.fn().mockResolvedValue(['msg-1']) };
     const deps = makeDeps({
@@ -866,6 +994,16 @@ describe('OverviewRunner.run()', () => {
       etfFlow: expect.objectContaining({ btcFlowUsd: 12_000_000 }),
       options: [expect.objectContaining({ symbol: 'BTC', maxPainStrike: 75000 })],
     }));
+    const saveCall = repo.saveOverview.mock.calls[0][0] as {
+      outputJson: OverviewOutput & {
+        coverage?: { summary: string };
+        flows?: { bullets: string[] };
+      };
+    };
+    expect(saveCall.outputJson.coverage?.summary).toContain('Core price 0/3');
+    expect(saveCall.outputJson.coverage?.summary).toContain('Options Deribit');
+    expect(saveCall.outputJson.flows?.bullets).toContain('BTC ETF flows: +$12.0M daily · sosovalue');
+    expect(saveCall.outputJson.flows?.bullets).toContain('Flow tone: daily inflows');
   });
 
   it('saves sourceHealth with correct healthyCount and failedCount', async () => {
