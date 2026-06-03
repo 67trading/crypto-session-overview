@@ -559,7 +559,7 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
   it('renders coverage and real ETF flow context when present', () => {
     const html = formatter.formatTelegramHtmlCompact(makeOutput({
       coverage: {
-        summary: 'Price 3/3 · Funding 3/3 · OI 1/3 · Options Deribit · Events 6 sources',
+        summary: 'Core price 3/3 · Funding 3/3 · OI 1/3 · Options Deribit · Events 6 sources',
       },
       flows: {
         bullets: [
@@ -569,7 +569,7 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
       },
     }));
 
-    expect(html).toContain('<b>Coverage:</b> Price 3/3 · Funding 3/3 · OI 1/3 · Options Deribit · Events 6 sources');
+    expect(html).toContain('<b>Coverage:</b> Core price 3/3 · Funding 3/3 · OI 1/3 · Options Deribit · Events 6 sources');
     expect(html).toContain('<b>🏦 Flows</b>');
     expect(html).toContain('BTC ETF flows: -$519.0M daily · sosovalue');
     expect(html).toContain('ETH ETF flows: -$90.0M daily · sosovalue');

@@ -222,7 +222,7 @@ function buildCoverageSummary(input: OverviewInput): string | undefined {
   ).length ?? 0;
   const eventsScope = eventSources > 0 ? `Events ${eventSources} sources` : 'Events unavailable';
   return [
-    `Price ${consensus.price.venuesAvailable.length}/${consensus.price.venuesRequired.length}`,
+    `Core price ${consensus.price.venuesAvailable.length}/${consensus.price.venuesRequired.length}`,
     `Funding ${consensus.derivatives.funding.venuesAvailable.length}/${consensus.derivatives.funding.venuesRequired.length}`,
     `OI ${consensus.derivatives.openInterest.venuesAvailable.length}/${consensus.derivatives.openInterest.venuesRequired.length}`,
     optionScope,
