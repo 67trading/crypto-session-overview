@@ -436,14 +436,18 @@ export class OverviewFormatter {
     const ethHeader = ethMeta.headerLabel ?? 'ETH context';
     const ethMarker = marketMarker(`${output.eth.vsbtc} ${ethHeader}`);
     const altsMarker = marketMarker(`${output.alts.rotationState} ${output.alts.breadth}`);
-    const derivativesMeta = output.derivatives as OverviewOutput['derivatives'] & { sourceScope?: string };
+    const derivativesMeta = output.derivatives as OverviewOutput['derivatives'] & { sourceScope?: string; verificationStatus?: string };
     const derivativesMarker = marketMarker(output.derivatives.positioning);
     const rotationDisplay = output.alts.rotationState.replace(/_/g, ' ');
     const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string };
     const altsHeader = altsMeta.sourceScope === 'tracked_basket'
       ? 'tracked basket rotation'
       : rotationDisplay;
-    const derivativesHeader = derivativesMeta.sourceScope === 'single_venue'
+    const derivativesHeader = derivativesMeta.sourceScope === 'cross_venue' && derivativesMeta.verificationStatus === 'confirmed_cross_venue'
+      ? 'cross-venue neutral'
+      : derivativesMeta.sourceScope === 'cross_venue'
+      ? 'coverage-scoped'
+      : derivativesMeta.sourceScope === 'single_venue'
       ? 'Bybit-scoped neutral'
       : output.derivatives.positioning.toLowerCase().includes('neutral') || output.derivatives.positioning.toLowerCase().includes('balanced') ? 'neutral' : 'positioning';
     const btcLevels = formatHtmlLevels(output.btc.keyLevels, 2);
@@ -476,10 +480,14 @@ export class OverviewFormatter {
       `Breadth: ${compactComplete(output.alts.breadth, 80)}`,
       `Rotation: ${rotationDisplay}`,
     ];
-    const derivativesSuffix = derivativesMeta.sourceScope === 'single_venue' ? ' · Bybit-scoped' : '';
+    const derivativesSuffix = derivativesMeta.sourceScope === 'single_venue'
+      ? ' · Bybit-scoped'
+      : derivativesMeta.sourceScope === 'cross_venue' && derivativesMeta.verificationStatus !== 'confirmed_cross_venue'
+      ? ' · coverage-scoped'
+      : '';
     const derivativesBullets = [
       `Funding: ${compactComplete(output.derivatives.funding, 52)}${derivativesSuffix}`,
-      `OI: ${compactComplete(output.derivatives.oi, 52)}${derivativesSuffix}`,
+      `OI: ${compactComplete(output.derivatives.oi, 82)}${derivativesSuffix}`,
       derivativesMeta.sourceScope === 'single_venue'
         ? `Positioning: ${compactComplete(output.derivatives.positioning, 42)}; broader venues not verified`
         : `Positioning: ${compactComplete(output.derivatives.positioning, 60)}`,
