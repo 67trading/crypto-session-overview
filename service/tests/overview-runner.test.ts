@@ -1003,6 +1003,7 @@ describe('OverviewRunner.run()', () => {
     expect(saveCall.outputJson.coverage?.summary).toContain('Core price 0/3');
     expect(saveCall.outputJson.coverage?.summary).toContain('Options Deribit');
     expect(saveCall.outputJson.flows?.bullets).toContain('BTC ETF flows: +$12.0M daily · sosovalue');
+    expect(saveCall.outputJson.flows?.bullets).toContain('Flow tone: daily inflows');
   });
 
   it('saves sourceHealth with correct healthyCount and failedCount', async () => {

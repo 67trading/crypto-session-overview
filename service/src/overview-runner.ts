@@ -202,7 +202,7 @@ function buildOptionsReference(options: OverviewInput['optionsContext'] | undefi
   if (btcOptions === undefined) return undefined;
   const selected = btcOptions.selectedMaxPain;
   if (selected !== undefined) {
-    return `${selected.maxPain} max pain · Deribit · ${btcOptions.expiryScope ?? 'front_expiry'} ${selected.expiryDate}`;
+    return `${selected.maxPain} max pain · Deribit · ${(btcOptions.expiryScope ?? 'front_expiry').replace(/_/g, ' ')} ${selected.expiryDate}`;
   }
   if (btcOptions.maxPainStrike !== undefined) {
     return `${btcOptions.maxPainStrike} max pain · Deribit · expiry scope unclear`;
@@ -234,7 +234,7 @@ function buildCoverageSummary(input: OverviewInput): string | undefined {
     ['bybit-announcements', 'binance-announcements', 'fed-calendar', 'bls-calendar', 'sec-rss', 'mobula-unlocks', 'coinmarketcal'].includes(collector.name)
     && (collector.status === 'success' || collector.status === 'partial')
   ).length ?? 0;
-  const eventsScope = eventSources > 0 ? `Events ${eventSources} sources` : 'Events unavailable';
+  const eventsScope = eventSources > 0 ? `Events ${eventSources} feeds` : 'Events unavailable';
   return [
     `Core price ${consensus.price.venuesAvailable.length}/${consensus.price.venuesRequired.length}`,
     `Funding ${consensus.derivatives.funding.venuesAvailable.length}/${consensus.derivatives.funding.venuesRequired.length}`,
@@ -252,6 +252,12 @@ function buildFlowBullets(input: OverviewInput): string[] {
   const bullets: string[] = [];
   if (etf.btcFlowUsd !== undefined) bullets.push(`BTC ${label}: ${formatSignedUsd(etf.btcFlowUsd)} ${suffix}`);
   if (etf.ethFlowUsd !== undefined) bullets.push(`ETH ${label}: ${formatSignedUsd(etf.ethFlowUsd)} ${suffix}`);
+  if (etf.isProxy !== true) {
+    const values = [etf.btcFlowUsd, etf.ethFlowUsd].filter((value): value is number => value !== undefined);
+    if (values.length > 0 && values.every((value) => value < 0)) bullets.push('Flow tone: daily outflows');
+    else if (values.length > 0 && values.every((value) => value > 0)) bullets.push('Flow tone: daily inflows');
+    else if (values.length > 1) bullets.push('Flow tone: mixed daily flows');
+  }
   return bullets;
 }
 
