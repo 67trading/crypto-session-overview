@@ -184,6 +184,19 @@ function fallbackStructure(levels: OverviewInput['levels'][string] | undefined):
   return levels?.fourHour?.structure ?? 'unknown';
 }
 
+function deriveBtcTone(
+  btcSnapshot: OverviewMarketSnapshot | undefined,
+  btcLevels: HtfLevelsSnapshot | undefined,
+): string {
+  if (btcSnapshot === undefined || btcLevels === undefined) return 'unknown';
+  const price = btcSnapshot.latestPrice;
+  if (btcLevels.weekly !== null && price > btcLevels.weekly.previousWeekHigh) return 'bullish_breakout';
+  if (btcLevels.weekly !== null && price < btcLevels.weekly.previousWeekLow) return 'bearish_breakdown';
+  if (btcLevels.daily !== null && price > btcLevels.daily.dailyMidpoint) return 'constructive';
+  if (btcLevels.daily !== null && price < btcLevels.daily.dailyMidpoint) return 'weak';
+  return 'neutral';
+}
+
 function buildOptionsReference(options: OverviewInput['optionsContext'] | undefined): string | undefined {
   const btcOptions = options?.find((option) => option.symbol === 'BTC' || option.currency === 'BTC');
   if (btcOptions === undefined) return undefined;
@@ -627,17 +640,9 @@ export class OverviewRunner {
       // 7b. Pre-compute market regime + confidence from deterministic signals
       const btcLevels = levels['BTCUSDT'];
       const btcDerivatives = derivativesContext['BTCUSDT'];
+      const deterministicBtcTone = deriveBtcTone(btcSnapshot, btcLevels);
       const precomputedRegime = classifyMarketRegime({
-        btcTone: btcSnapshot !== undefined && btcLevels !== undefined
-          ? (() => {
-              const price = btcSnapshot.latestPrice;
-              if (btcLevels.weekly !== null && price > btcLevels.weekly.previousWeekHigh) return 'bullish_breakout';
-              if (btcLevels.weekly !== null && price < btcLevels.weekly.previousWeekLow) return 'bearish_breakdown';
-              if (btcLevels.daily !== null && price > btcLevels.daily.dailyMidpoint) return 'constructive';
-              if (btcLevels.daily !== null && price < btcLevels.daily.dailyMidpoint) return 'weak';
-              return 'neutral';
-            })()
-          : 'unknown',
+        btcTone: deterministicBtcTone,
         btcFourHourStructure: btcLevels?.fourHour?.structure ?? 'unknown',
         btcWeeklyPosition: btcLevels?.weekly?.weeklyPosition ?? null,
         btcDailyPosition: btcLevels?.daily?.dailyPosition ?? null,
@@ -648,16 +653,7 @@ export class OverviewRunner {
         dataStatus,
       });
       const btcPresentation = buildBtcPresentationContext({
-        btcTone: btcSnapshot !== undefined && btcLevels !== undefined
-          ? (() => {
-              const price = btcSnapshot.latestPrice;
-              if (btcLevels.weekly !== null && price > btcLevels.weekly.previousWeekHigh) return 'bullish_breakout';
-              if (btcLevels.weekly !== null && price < btcLevels.weekly.previousWeekLow) return 'bearish_breakdown';
-              if (btcLevels.daily !== null && price > btcLevels.daily.dailyMidpoint) return 'constructive';
-              if (btcLevels.daily !== null && price < btcLevels.daily.dailyMidpoint) return 'weak';
-              return 'neutral';
-            })()
-          : 'unknown',
+        btcTone: deterministicBtcTone,
         levels: btcLevels,
       });
 
@@ -759,7 +755,7 @@ export class OverviewRunner {
         briefConfidence: confidenceBreakdown.label,
       };
       const finalBtcPresentation = buildBtcPresentationContext({
-        btcTone: augmentedInput.marketContext.btcTone,
+        btcTone: deterministicBtcTone,
         levels: btcLevels,
       });
       augmentedInput = {
