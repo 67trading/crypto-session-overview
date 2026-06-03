@@ -556,6 +556,25 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).not.toContain('tracked basket');
   });
 
+  it('renders coverage and real ETF flow context when present', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      coverage: {
+        summary: 'Price 3/3 · Funding 3/3 · OI 1/3 · Options Deribit · Events 6 sources',
+      },
+      flows: {
+        bullets: [
+          'BTC ETF flows: -$519.0M daily · sosovalue',
+          'ETH ETF flows: -$90.0M daily · sosovalue',
+        ],
+      },
+    }));
+
+    expect(html).toContain('<b>Coverage:</b> Price 3/3 · Funding 3/3 · OI 1/3 · Options Deribit · Events 6 sources');
+    expect(html).toContain('<b>🏦 Flows</b>');
+    expect(html).toContain('BTC ETF flows: -$519.0M daily · sosovalue');
+    expect(html).toContain('ETH ETF flows: -$90.0M daily · sosovalue');
+  });
+
 });
 
 describe('OverviewFormatter.splitForTelegram()', () => {

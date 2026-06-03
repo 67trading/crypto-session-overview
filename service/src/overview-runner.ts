@@ -196,6 +196,51 @@ function buildOptionsReference(options: OverviewInput['optionsContext'] | undefi
   return undefined;
 }
 
+function formatSignedUsd(value: number): string {
+  const sign = value >= 0 ? '+' : '-';
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `${sign}$${(abs / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  return `${sign}$${abs.toFixed(0)}`;
+}
+
+function buildCoverageSummary(input: OverviewInput): string | undefined {
+  const consensus = input.crossVenueConsensus;
+  if (consensus === undefined) return undefined;
+  const optionScope = input.optionsContext?.some((option) =>
+    option.source === 'deribit'
+    || option.symbol === 'BTC'
+    || option.symbol === 'ETH'
+    || option.currency === 'BTC'
+    || option.currency === 'ETH'
+  )
+    ? 'Options Deribit'
+    : 'Options unavailable';
+  const eventSources = input.sourceHealth?.collectors.filter((collector) =>
+    ['bybit-announcements', 'binance-announcements', 'fed-calendar', 'bls-calendar', 'sec-rss', 'mobula-unlocks', 'coinmarketcal'].includes(collector.name)
+    && (collector.status === 'success' || collector.status === 'partial')
+  ).length ?? 0;
+  const eventsScope = eventSources > 0 ? `Events ${eventSources} sources` : 'Events unavailable';
+  return [
+    `Price ${consensus.price.venuesAvailable.length}/${consensus.price.venuesRequired.length}`,
+    `Funding ${consensus.derivatives.funding.venuesAvailable.length}/${consensus.derivatives.funding.venuesRequired.length}`,
+    `OI ${consensus.derivatives.openInterest.venuesAvailable.length}/${consensus.derivatives.openInterest.venuesRequired.length}`,
+    optionScope,
+    eventsScope,
+  ].join(' · ');
+}
+
+function buildFlowBullets(input: OverviewInput): string[] {
+  const etf = input.etfFlowContext;
+  if (etf?.sourceAvailable !== true) return [];
+  const label = etf.isProxy === true ? 'ETF holdings proxy' : 'ETF flows';
+  const suffix = `daily · ${etf.source}`;
+  const bullets: string[] = [];
+  if (etf.btcFlowUsd !== undefined) bullets.push(`BTC ${label}: ${formatSignedUsd(etf.btcFlowUsd)} ${suffix}`);
+  if (etf.ethFlowUsd !== undefined) bullets.push(`ETH ${label}: ${formatSignedUsd(etf.ethFlowUsd)} ${suffix}`);
+  return bullets;
+}
+
 function buildDeterministicFallbackOverview(params: {
   session: OverviewRunOptions['session'];
   input: OverviewInput;
@@ -750,6 +795,14 @@ export class OverviewRunner {
         marketRegime: confidenceAdjustedRegime.marketRegime,
         briefConfidence: confidenceAdjustedRegime.briefConfidence,
         confidenceBreakdown,
+        coverage: (() => {
+          const summary = buildCoverageSummary(augmentedInput);
+          return summary !== undefined ? { summary } : undefined;
+        })(),
+        flows: (() => {
+          const bullets = buildFlowBullets(augmentedInput);
+          return bullets.length > 0 ? { bullets } : undefined;
+        })(),
         // Use deterministic computed dataStatus, not LLM interpretation
         dataStatus,
         // Fallback liquidity if LLM did not generate it (transitional guard)

@@ -527,6 +527,8 @@ export class OverviewFormatter {
         ? `Positioning: ${compactComplete(output.derivatives.positioning, 42)}; broader venues not verified`
         : `Positioning: ${compactComplete(output.derivatives.positioning, 60)}`,
     ];
+    const coverageSummary = (output as OverviewOutput & { coverage?: { summary: string } }).coverage?.summary;
+    const flowBullets = (output as OverviewOutput & { flows?: { bullets: string[] } }).flows?.bullets ?? [];
     const confidenceReason = output.confidenceBreakdown?.reasons[0];
     const liquidityLines = compactHtmlLiquidityLines(output);
 
@@ -536,6 +538,7 @@ export class OverviewFormatter {
       `${b('Regime:')} ${regimeMarker} ${escapeHtml(regimeDisplay)}`,
       `${b('Confidence:')} ${confidenceMarker(output.briefConfidence)} ${escapeHtml(output.briefConfidence)}`,
       ...(confidenceReason !== undefined ? [`${b('Reason:')} ${escapeHtml(compactComplete(confidenceReason, 105))}`] : []),
+      ...(coverageSummary !== undefined ? [`${b('Coverage:')} ${escapeHtml(compactComplete(coverageSummary, 130))}`] : []),
       '',
       b('📌 Changed'),
       ...(changed.length > 0 ? changed : ['⚪ Initial session read']),
@@ -552,6 +555,13 @@ export class OverviewFormatter {
       `${b(`📊 Derivs · ${derivativesMarker} ${derivativesHeader}`)}`,
       ...derivativesBullets.map((line) => `• ${escapeHtml(line)}`),
     ];
+
+    if (flowBullets.length > 0) {
+      lines.push('', b('🏦 Flows'));
+      for (const flow of flowBullets.slice(0, 2)) {
+        lines.push(`• ${escapeHtml(compactComplete(flow, 85))}`);
+      }
+    }
 
     if (liquidityLines.length > 0) {
       lines.push('', b('💧 Levels'));

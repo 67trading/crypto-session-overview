@@ -922,6 +922,15 @@ describe('OverviewRunner.run()', () => {
       etfFlow: expect.objectContaining({ btcFlowUsd: 12_000_000 }),
       options: [expect.objectContaining({ symbol: 'BTC', maxPainStrike: 75000 })],
     }));
+    const saveCall = repo.saveOverview.mock.calls[0][0] as {
+      outputJson: OverviewOutput & {
+        coverage?: { summary: string };
+        flows?: { bullets: string[] };
+      };
+    };
+    expect(saveCall.outputJson.coverage?.summary).toContain('Price 0/3');
+    expect(saveCall.outputJson.coverage?.summary).toContain('Options Deribit');
+    expect(saveCall.outputJson.flows?.bullets).toContain('BTC ETF flows: +$12.0M daily · sosovalue');
   });
 
   it('saves sourceHealth with correct healthyCount and failedCount', async () => {

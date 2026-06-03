@@ -40,6 +40,10 @@ export const OverviewOutputSchema = z.object({
     liquidations: DataStatusValueSchema,
   }),
 
+  coverage: z.object({
+    summary: z.string(),
+  }).optional(),
+
   whatChanged: z.array(z.string()).min(1).max(8),
 
   btc: z.object({
@@ -85,6 +89,10 @@ export const OverviewOutputSchema = z.object({
     sourceScope: SourceScopeSchema.optional(),
     verificationStatus: VerificationStatusSchema.optional(),
   }),
+
+  flows: z.object({
+    bullets: z.array(z.string()),
+  }).optional(),
 
   liquidity: z.object({
     immediateUpside: z.string().optional(),
