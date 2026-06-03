@@ -296,6 +296,20 @@ describe('OverviewFormatter.format()', () => {
     expect(result.length).toBeLessThanOrEqual(4096);
     expect(formatter.splitForTelegram(result)).toHaveLength(1);
   });
+
+  it('does not present tracked-basket broad_rotation as market-wide broad rotation', () => {
+    const result = formatter.format(makeOutput({
+      alts: {
+        summary: 'Tracked basket positive.',
+        rotationState: 'broad_rotation',
+        breadth: '83% of 6 tracked alts positive on 24h',
+        sourceScope: 'tracked_basket',
+      },
+    }));
+
+    expect(result).toContain('Rotation: tracked basket positive');
+    expect(result).not.toContain('Rotation: broad rotation');
+  });
 });
 
 describe('OverviewFormatter.formatCompact()', () => {
@@ -356,6 +370,20 @@ describe('OverviewFormatter.formatCompact()', () => {
     expect(compact).toContain('* Upside: 97,400 weekly high');
     expect(compact).not.toContain('* 97,400 weekly high');
     expect(compact).toContain('Fresh lower timeframe cluster.');
+  });
+
+  it('uses tracked-basket rotation wording in compact reports', () => {
+    const compact = formatter.formatCompact(makeOutput({
+      alts: {
+        summary: 'Tracked basket positive.',
+        rotationState: 'broad_rotation',
+        breadth: '83% of 6 tracked alts positive on 24h',
+        sourceScope: 'tracked_basket',
+      },
+    }));
+
+    expect(compact).toContain('🌊 Alts: tracked basket positive · 83% of 6 tracked alts positive on 24h');
+    expect(compact).not.toContain('broad rotation');
   });
 });
 
@@ -484,6 +512,8 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).toContain('<b>Reason:</b> Derivatives are source-scoped');
     expect(html).toContain('Ξ ETH · 🔴 ETH/BTC 7d resilience, USD weak');
     expect(html).toContain('🌊 Alts · ⚪ tracked basket rotation');
+    expect(html).toContain('Rotation: tracked basket positive');
+    expect(html).not.toContain('Rotation: broad rotation');
     expect(html).toContain('📊 Derivs · ⚪ Bybit-scoped neutral');
     expect(html).toContain('Funding: neutral across BTC/ETH · Bybit-scoped');
     expect(html).toContain('Options ref: <code>75000 max pain · Deribit · front_expiry 07JUN26</code>');

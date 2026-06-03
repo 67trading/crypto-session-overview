@@ -221,6 +221,17 @@ function formatRegimeForTelegram(output: OverviewOutput): string {
   return output.marketRegime.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function formatAltRotation(output: OverviewOutput): string {
+  const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string };
+  if (altsMeta.sourceScope === 'tracked_basket') {
+    if (output.alts.rotationState === 'broad_rotation') return 'tracked basket positive';
+    if (output.alts.rotationState === 'selective_rotation') return 'selective within tracked basket';
+    if (output.alts.rotationState === 'weak') return 'tracked basket weak';
+    if (output.alts.rotationState === 'no_rotation') return 'no tracked basket rotation';
+  }
+  return output.alts.rotationState.replace(/_/g, ' ');
+}
+
 function eventMarker(importance: string): string {
   if (importance === 'critical' || importance === 'high') return '🔴';
   if (importance === 'medium') return '🟠';
@@ -288,7 +299,7 @@ export class OverviewFormatter {
     lines.push('🌊 Alts');
     pushIfNonEmpty(lines, compact(output.alts.summary, MAX_SUMMARY_CHARS));
     lines.push(
-      `Rotation: ${output.alts.rotationState.replace(/_/g, ' ')}  |  Breadth: ${compact(output.alts.breadth, MAX_DETAIL_CHARS)}`,
+      `Rotation: ${formatAltRotation(output)}  |  Breadth: ${compact(output.alts.breadth, MAX_DETAIL_CHARS)}`,
     );
     lines.push('');
 
@@ -363,7 +374,7 @@ export class OverviewFormatter {
   formatCompact(output: OverviewOutput): string {
     const label = SESSION_LABEL[output.session];
     const regimeDisplay = output.marketRegime.replace(/_/g, ' ');
-    const rotationDisplay = output.alts.rotationState.replace(/_/g, ' ');
+    const rotationDisplay = formatAltRotation(output);
     const btcLevels = formatLevels(output.btc.keyLevels, 90);
     const ethLevels = formatLevels(output.eth.keyLevels, 70);
     const highImpactEvents = output.events.upcoming.filter((ev) =>
@@ -438,7 +449,7 @@ export class OverviewFormatter {
     const altsMarker = marketMarker(`${output.alts.rotationState} ${output.alts.breadth}`);
     const derivativesMeta = output.derivatives as OverviewOutput['derivatives'] & { sourceScope?: string; verificationStatus?: string };
     const derivativesMarker = marketMarker(output.derivatives.positioning);
-    const rotationDisplay = output.alts.rotationState.replace(/_/g, ' ');
+    const rotationDisplay = formatAltRotation(output);
     const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string };
     const altsHeader = altsMeta.sourceScope === 'tracked_basket'
       ? 'tracked basket rotation'
