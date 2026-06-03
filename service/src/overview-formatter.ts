@@ -221,13 +221,6 @@ function formatRegimeForTelegram(output: OverviewOutput): string {
   return output.marketRegime.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function dataStatusMarker(status: string): string {
-  if (status === 'fresh') return '✅';
-  if (status === 'partial' || status === 'stale') return '⚠️';
-  if (status === 'failed' || status === 'unavailable') return '❌';
-  return '⚪';
-}
-
 function eventMarker(importance: string): string {
   if (importance === 'critical' || importance === 'high') return '🔴';
   if (importance === 'medium') return '🟠';
@@ -448,14 +441,6 @@ export class OverviewFormatter {
         ? ['🔵 No high-impact BTC/ETH event confirmed']
         : ['⚪ No event source update'];
 
-    const sourceParts = [
-      `${dataStatusMarker(output.dataStatus.price)} Price`,
-      `${dataStatusMarker(output.dataStatus.derivatives)} Derivs`,
-      `${dataStatusMarker(output.dataStatus.events)} Events`,
-      `${dataStatusMarker(output.dataStatus.liquidations)} Liq clusters`,
-      `${isInitialRead(output) ? '⚪ Initial read' : '✅ Previous brief'}`,
-    ];
-
     const changed = output.whatChanged.slice(0, 2).map((bullet) =>
       `${isInitialRead(output) ? '⚪' : '✅'} ${escapeHtml(compactComplete(bullet, 95))}`
     );
@@ -485,7 +470,6 @@ export class OverviewFormatter {
       '',
       `${b('Regime:')} ${regimeMarker} ${escapeHtml(regimeDisplay)}`,
       `${b('Confidence:')} ${confidenceMarker(output.briefConfidence)} ${escapeHtml(output.briefConfidence)}`,
-      `${b('Sources:')} ${sourceParts.map(escapeHtml).join(' · ')}`,
       '',
       b('📌 Changed'),
       ...(changed.length > 0 ? changed : ['⚪ Initial session read']),

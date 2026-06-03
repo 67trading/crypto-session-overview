@@ -389,7 +389,8 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(formatter.splitForTelegram(html)).toHaveLength(1);
     expect(html).toContain('<b>Crypto Asia Brief</b>');
     expect(html).toContain('<b>Regime:</b> ⚫ Defensive breakdown near support');
-    expect(html).toContain('<b>Sources:</b> ✅ Price · ✅ Derivs · ⚠️ Events · ❌ Liq clusters');
+    expect(html).not.toContain('<b>Sources:</b>');
+    expect(html).not.toContain('Liq clusters');
     expect(html).toContain('Recovery/ref: <code>71407.5-71413.9 &lt;recovery&gt;</code>');
     expect(html).toContain('Resistance/ref: <code>74495.8 &amp; resistance</code>');
     expect(html).toContain('🔴 FOMC &lt;Minutes&gt; &amp; press event');
