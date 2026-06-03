@@ -97,6 +97,10 @@ function compactChangedBullet(text: string, maxChars: number): string {
     const candidate = `${label} ${prevShort} → ${currShort}.`;
     if (candidate.length <= maxChars) return candidate;
   }
+  if (normalized.length > maxChars) {
+    const fieldChangeMatch = normalized.match(/^([^:]{1,40}):\s+.+\s+→\s+.+$/);
+    if (fieldChangeMatch !== null) return `${fieldChangeMatch[1]} changed.`;
+  }
   return compactSentence(normalized, maxChars);
 }
 

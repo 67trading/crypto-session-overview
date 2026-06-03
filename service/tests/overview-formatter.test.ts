@@ -525,6 +525,10 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
 
   it('uses deterministic BTC header label in Telegram instead of raw structure', () => {
     const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      whatChanged: [
+        'Confidence: high → medium',
+        'BTC position: Currently positioned below both daily and weekly midpoints, and trading inside the previous Europe session range. → Below daily midpoint and below weekly midpoint.',
+      ],
       btc: {
         summary: 'BTC remains inside the 4H range, but below daily and weekly midpoints, leaving pressure to the downside.',
         keyLevels: ['78089.9 (previous week high)', '74225.4 (4H last swing high)'],
@@ -544,6 +548,9 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     }));
 
     expect(html).toContain('₿ BTC · 🔴 bearish range pressure');
+    expect(html).toContain('Confidence: high → medium');
+    expect(html).toContain('BTC position changed.');
+    expect(html).not.toContain('trading inside.');
     expect(html).toContain('Spot: <code>66,700.12</code>');
     expect(html).toContain('Spot: <code>1,877.45</code>');
     expect(html).toContain('BTC remains inside the 4H range, but below daily and weekly midpoints, leaving pressure.');
