@@ -1,4 +1,4 @@
-import type { DerivativesContext, DerivativesNarrativeSummary } from './ports.js';
+import type { DerivativesConsensus, DerivativesContext, DerivativesNarrativeSummary } from './ports.js';
 
 export type { DerivativesNarrativeSummary } from './ports.js';
 
@@ -54,7 +54,36 @@ function buildStatusNarrative(
 export function buildDerivativesNarrative(
   contexts: Record<string, DerivativesContext>,
   prioritySymbols: string[] = ['BTCUSDT', 'ETHUSDT'],
+  consensus?: DerivativesConsensus,
 ): DerivativesNarrativeSummary {
+  if (consensus !== undefined && consensus.combinedLabel !== 'unavailable') {
+    const fundingVenues = consensus.funding.venuesAvailable.length;
+    const oiVenues = consensus.openInterest.venuesAvailable.length;
+    const fundingLabel = consensus.funding.direction === 'mixed'
+      ? consensus.funding.perVenue.map((row) => `${row.venue} ${row.direction}`).join(', ')
+      : `${consensus.funding.direction} on ${fundingVenues}/${consensus.funding.venuesRequired.length} venues`;
+    const oiLabel = consensus.openInterest.direction === 'mixed'
+      ? consensus.openInterest.perVenue.map((row) => `${row.venue} ${row.direction}`).join(', ')
+      : `${consensus.openInterest.direction} on ${oiVenues}/${consensus.openInterest.venuesRequired.length} venues`;
+    return {
+      funding: fundingLabel,
+      oi: oiLabel,
+      positioning: consensus.combinedLabel === 'mixed'
+        ? 'mixed cross-venue derivatives signal'
+        : 'no venue-confirmed stress signal',
+      sourceScope: consensus.funding.verificationStatus === 'confirmed_cross_venue' || consensus.openInterest.verificationStatus === 'confirmed_cross_venue'
+        ? 'cross_venue'
+        : 'single_venue',
+      venuesAvailable: [...new Set([...consensus.funding.venuesAvailable, ...consensus.openInterest.venuesAvailable])],
+      verificationStatus: consensus.funding.verificationStatus === 'confirmed_cross_venue' && consensus.openInterest.verificationStatus === 'confirmed_cross_venue'
+        ? 'confirmed_cross_venue'
+        : consensus.funding.verificationStatus === 'ambiguous' || consensus.openInterest.verificationStatus === 'ambiguous'
+        ? 'ambiguous'
+        : 'source_scoped',
+      positioningBasis: 'funding_and_oi',
+    };
+  }
+
   const symbols = prioritySymbols.filter((s) => s in contexts);
 
   if (symbols.length === 0) {

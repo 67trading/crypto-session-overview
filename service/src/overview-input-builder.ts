@@ -21,6 +21,8 @@ import type {
   StablecoinContext,
   ChainFlowContext,
   SourceHealthSummary,
+  NormalizedVenueSnapshot,
+  CrossVenueConsensus,
 } from './ports.js';
 
 export class OverviewInputBuilder {
@@ -49,6 +51,8 @@ export class OverviewInputBuilder {
     stablecoinContext?: StablecoinContext;
     chainFlowContext?: ChainFlowContext;
     sourceHealth?: SourceHealthSummary;
+    normalizedVenueSnapshots?: NormalizedVenueSnapshot[];
+    crossVenueConsensus?: CrossVenueConsensus;
   }): OverviewInput {
     const btcSnapshot = params.marketSnapshots.find((s) => s.symbol === 'BTCUSDT');
     const ethSnapshot = params.marketSnapshots.find((s) => s.symbol === 'ETHUSDT');
@@ -97,6 +101,8 @@ export class OverviewInputBuilder {
       ...(params.stablecoinContext !== undefined ? { stablecoinContext: params.stablecoinContext } : {}),
       ...(params.chainFlowContext !== undefined ? { chainFlowContext: params.chainFlowContext } : {}),
       ...(params.sourceHealth !== undefined ? { sourceHealth: params.sourceHealth } : {}),
+      ...(params.normalizedVenueSnapshots !== undefined ? { normalizedVenueSnapshots: params.normalizedVenueSnapshots } : {}),
+      ...(params.crossVenueConsensus !== undefined ? { crossVenueConsensus: params.crossVenueConsensus } : {}),
     };
 
     // Apply token budget: truncate events and setups if needed

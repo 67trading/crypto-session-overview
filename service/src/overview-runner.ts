@@ -26,6 +26,7 @@ import { analyzeCrossMarket } from './cross-market-analyzer.js';
 import { PRODUCT_FOOTER_NOTE, buildPresentationContext } from './presentation-contract.js';
 import { computeReportConfidence } from './market-regime-confidence.js';
 import { buildDeterministicScenarios } from './scenario-builder.js';
+import { buildCrossVenueConsensus } from './cross-venue-consensus-builder.js';
 import { metrics } from './metrics.js';
 import {
   computeWeeklyLevels,
@@ -551,7 +552,7 @@ export class OverviewRunner {
       const altsBreadth = analyzeAltsBreadth(marketSnapshots);
 
       // 5d. Build derivatives narrative from status enums
-      const derivativesNarrative = buildDerivativesNarrative(derivativesContext);
+      let derivativesNarrative = buildDerivativesNarrative(derivativesContext);
 
       // 5e. Cross-market analysis — ETH/BTC ratio trend, dominance signal, top movers
       const crossMarket = analyzeCrossMarket(marketSnapshots);
@@ -659,6 +660,18 @@ export class OverviewRunner {
           });
         }
       }
+
+      const crossVenueConsensus = buildCrossVenueConsensus(augmentedInput.normalizedVenueSnapshots ?? []);
+      derivativesNarrative = buildDerivativesNarrative(
+        derivativesContext,
+        ['BTCUSDT', 'ETHUSDT'],
+        crossVenueConsensus.derivatives,
+      );
+      augmentedInput = {
+        ...augmentedInput,
+        crossVenueConsensus,
+        derivativesNarrative,
+      };
 
       // Build source health summary across all collectors
       const allCollectorQuality: EnrichedCollectorQuality[] = [

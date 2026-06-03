@@ -87,6 +87,98 @@ export type ConfidenceBreakdown = {
   reasons: string[];
 };
 
+export type NormalizedVenueSnapshot = {
+  venue: Exclude<Venue, 'deribit'>;
+  asset: 'BTC' | 'ETH' | string;
+  canonicalInstrument: string;
+  venueInstrument: string;
+  instrumentType: 'spot' | 'linear_perp' | 'inverse_perp';
+  quote: 'USDT' | 'USD' | 'USDC';
+  observedAt: string;
+  ticker24h?: {
+    last: number;
+    open24h?: number;
+    high24h?: number;
+    low24h?: number;
+    change24hPct?: number;
+    sourceScope: 'single_venue';
+    timeBasis: 'rolling_24h';
+  };
+  candles?: Array<{
+    timeframe: '1h' | '4h' | '1d' | '1w';
+    openTime: string;
+    closeTime?: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    closed: boolean;
+    timeBasis: TimeBasis;
+  }>;
+  funding?: {
+    rate: number;
+    intervalHours?: number;
+    normalizedPer8h?: number;
+    nextFundingTime?: string;
+    timeBasis: 'unknown';
+  };
+  openInterest?: {
+    rawValue: number;
+    rawUnit: 'contracts' | 'base' | 'quote' | 'usd' | 'unknown';
+    normalizedUsd?: number;
+    change24hPct?: number;
+    timeBasis: 'rolling_24h' | 'utc_daily_candle' | 'unknown';
+  };
+  dataQuality: {
+    missingFields: string[];
+    stale: boolean;
+    errors: string[];
+  };
+};
+
+export type MetricDirection = 'bullish' | 'bearish' | 'neutral' | 'mixed' | 'unavailable';
+
+export type VenueMetricConsensus = {
+  metric: 'price_24h' | 'btc_regime' | 'funding' | 'open_interest' | 'eth_btc_ratio' | 'alt_breadth';
+  asset?: 'BTC' | 'ETH';
+  venuesRequired: Venue[];
+  venuesAvailable: Venue[];
+  coverageScore: number;
+  agreementScore: number;
+  direction: MetricDirection;
+  perVenue: Array<{
+    venue: Venue;
+    value?: number;
+    direction: MetricDirection;
+    verificationStatus: VerificationStatus;
+    reason?: string;
+  }>;
+  conflicts: Array<{
+    venue: Venue;
+    direction: MetricDirection;
+    reason: string;
+  }>;
+  verificationStatus: VerificationStatus;
+};
+
+export type DerivativesConsensus = {
+  funding: VenueMetricConsensus;
+  openInterest: VenueMetricConsensus;
+  combinedLabel:
+    | 'cross_venue_neutral'
+    | 'cross_venue_bullish'
+    | 'cross_venue_bearish'
+    | 'mixed'
+    | 'single_source'
+    | 'unavailable';
+  confidenceContribution: number;
+};
+
+export type CrossVenueConsensus = {
+  price: VenueMetricConsensus;
+  derivatives: DerivativesConsensus;
+};
+
 export type AltsBreadthSummary = {
   breadthPercent: number;
   positiveCount: number;
@@ -324,6 +416,8 @@ export type OverviewInput = {
   sourceHealth?: SourceHealthSummary;
   presentationContext?: PresentationContext;
   confidenceBreakdown?: ConfidenceBreakdown;
+  normalizedVenueSnapshots?: NormalizedVenueSnapshot[];
+  crossVenueConsensus?: CrossVenueConsensus;
 };
 
 // ─── Collection ports ──────────────────────────────────────────────────────────
