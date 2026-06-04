@@ -87,6 +87,23 @@ model CollectorRun {
   createdAt            DateTime  @default(now())
 }
 
+model VenueSnapshot {
+  id                  String   @id @default(uuid())
+  venue               String
+  asset               String
+  metric              String
+  value               Float
+  normalizedUsd       Float?
+  observedAt          DateTime
+  source              String?
+  venueInstrument     String?
+  rawJson             String?
+  createdAt           DateTime @default(now())
+
+  @@unique([venue, asset, metric, observedAt])
+  @@index([venue, asset, metric, observedAt])
+}
+
 model TelegramOverviewPost {
   id           String   @id @default(uuid())
   overviewId   String
