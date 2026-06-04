@@ -8,6 +8,7 @@ export type SessionHighLow = {
   low: number;
   midpoint: number;
   open: number;
+  close: number;
 };
 
 export type SessionContinuationRead =
@@ -22,8 +23,11 @@ export type SessionContinuationRead =
 
 export type SessionContext = {
   currentSession: CryptoSession;
+  currentBoundary?: SessionBoundary;
+  previousBoundary?: SessionBoundary;
   previousSessionHighLow?: SessionHighLow;
   currentSessionOpen?: number;
+  currentSessionOpenStatus?: 'confirmed' | 'not_started' | 'unavailable';
   priceVsPreviousSession?: SessionContinuationRead;
 };
 
@@ -40,9 +44,10 @@ export function extractSessionHighLow(
   const high = Math.max(...filtered.map((c) => c.high));
   const low = Math.min(...filtered.map((c) => c.low));
   const open = filtered[0]!.open;
+  const close = filtered[filtered.length - 1]!.close;
   const midpoint = computeMidpoint(high, low);
 
-  return { session, high, low, midpoint, open };
+  return { session, high, low, midpoint, open, close };
 }
 
 export function detectSessionContinuation(
@@ -66,14 +71,34 @@ export function detectSessionContinuation(
   return 'inside_range';
 }
 
-export function buildSessionContext(
-  session: CryptoSession,
-  currentPrice: number,
-  fourHourCandles: HtfCandle[],
-  previousBoundary: SessionBoundary | null
-): SessionContext {
+function findCurrentSessionOpen(
+  candles: HtfCandle[],
+  currentBoundary: SessionBoundary,
+  now: Date,
+): { open?: number; status: 'confirmed' | 'not_started' | 'unavailable' } {
+  if (now.getTime() < currentBoundary.startMs) return { status: 'not_started' };
+  const exactBoundaryCandle = candles.find((c) => c.openTimeMs === currentBoundary.startMs);
+  if (exactBoundaryCandle === undefined) return { status: 'unavailable' };
+  return { open: exactBoundaryCandle.open, status: 'confirmed' };
+}
+
+export function buildSessionContext(params: {
+  session: CryptoSession;
+  currentPrice: number;
+  fourHourCandles: HtfCandle[];
+  currentBoundary: SessionBoundary;
+  previousBoundary: SessionBoundary | null;
+  now: Date;
+}): SessionContext {
+  const { session, currentPrice, fourHourCandles, currentBoundary, previousBoundary, now } = params;
   if (previousBoundary === null) {
-    return { currentSession: session };
+    const currentOpen = findCurrentSessionOpen(fourHourCandles, currentBoundary, now);
+    return {
+      currentSession: session,
+      currentBoundary,
+      currentSessionOpenStatus: currentOpen.status,
+      ...(currentOpen.open !== undefined ? { currentSessionOpen: currentOpen.open } : {}),
+    };
   }
 
   const previousSessionHighLow = extractSessionHighLow(
@@ -82,20 +107,21 @@ export function buildSessionContext(
     previousBoundary
   );
 
-  const sessionCandles = fourHourCandles.filter(
-    (c) => c.openTimeMs < previousBoundary.startMs
-  );
-  const currentSessionOpen =
-    sessionCandles.length > 0 ? sessionCandles[sessionCandles.length - 1]!.close : undefined;
+  const currentOpen = findCurrentSessionOpen(fourHourCandles, currentBoundary, now);
 
   const priceVsPreviousSession =
     previousSessionHighLow !== null
       ? detectSessionContinuation(currentPrice, previousSessionHighLow)
       : undefined;
 
-  const ctx: SessionContext = { currentSession: session };
+  const ctx: SessionContext = {
+    currentSession: session,
+    currentBoundary,
+    previousBoundary,
+    currentSessionOpenStatus: currentOpen.status,
+  };
   if (previousSessionHighLow !== null) ctx.previousSessionHighLow = previousSessionHighLow;
-  if (currentSessionOpen !== undefined) ctx.currentSessionOpen = currentSessionOpen;
+  if (currentOpen.open !== undefined) ctx.currentSessionOpen = currentOpen.open;
   if (priceVsPreviousSession !== undefined) ctx.priceVsPreviousSession = priceVsPreviousSession;
   return ctx;
 }

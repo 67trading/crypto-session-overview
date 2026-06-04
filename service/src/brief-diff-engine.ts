@@ -5,6 +5,8 @@ function fmtRegime(regime: string): string {
 }
 
 function fmtRotation(state: string): string {
+  if (state === 'weak' || state === 'no_rotation') return 'broad perp weakness';
+  if (state === 'selective_rotation') return 'selective rotation';
   return state.replace(/_/g, ' ');
 }
 
@@ -67,7 +69,7 @@ export function computeWhatChanged(
 
   if (previous.alts.rotationState !== current.alts.rotationState) {
     bullets.push(
-      `Alt rotation: ${fmtRotation(previous.alts.rotationState)} → ${fmtRotation(current.alts.rotationState)}`,
+      `Alts breadth: ${fmtRotation(previous.alts.rotationState)} → ${fmtRotation(current.alts.rotationState)}`,
     );
   }
 

@@ -43,6 +43,8 @@ export type OverviewRunOptions = {
   publish?: boolean;
   tokenBudget?: number;
   force?: boolean;
+  targetSessionDate?: string;
+  now?: Date;
 };
 
 export type OverviewRunResult = {

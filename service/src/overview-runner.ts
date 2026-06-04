@@ -25,9 +25,10 @@ import { preprocessEvents } from './events-preprocessor.js';
 import { analyzeCrossMarket } from './cross-market-analyzer.js';
 import { PRODUCT_FOOTER_NOTE, buildPresentationContext } from './presentation-contract.js';
 import { computeReportConfidence } from './market-regime-confidence.js';
-import { buildDeterministicScenarios } from './scenario-builder.js';
+import { buildSessionAwareScenarios } from './scenario-builder.js';
 import { buildCrossVenueConsensus } from './cross-venue-consensus-builder.js';
 import { buildBtcPresentationContext, btcPresentationToOutput } from './btc-presentation-builder.js';
+import { buildSessionLevelsPresentation, formatSessionLevel } from './session-levels-builder.js';
 import { metrics } from './metrics.js';
 import {
   computeWeeklyLevels,
@@ -113,6 +114,27 @@ function existingOverviewResult(
     ...(output !== undefined ? { briefConfidence: output.briefConfidence } : {}),
     collectorStatus: {},
   };
+}
+
+function resolveBoundaryDate(options: OverviewRunOptions, runNow: Date): Date {
+  if (options.targetSessionDate === undefined) return runNow;
+  const match = options.targetSessionDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match === null) {
+    throw new Error(`Invalid targetSessionDate: ${options.targetSessionDate}`);
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    !Number.isFinite(date.getTime())
+    || date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) {
+    throw new Error(`Invalid targetSessionDate: ${options.targetSessionDate}`);
+  }
+  return date;
 }
 
 function compactPreviousBriefText(text: string, maxChars = PREVIOUS_BRIEF_TEXT_LIMIT): string {
@@ -387,9 +409,11 @@ export class OverviewRunner {
   async run(options: OverviewRunOptions): Promise<OverviewRunResult> {
     const startedAt = Date.now();
     const { session, symbols } = options;
+    const runNow = options.now ?? new Date();
+    const boundaryDate = resolveBoundaryDate(options, runNow);
     const allSymbols = [...new Set([...symbols.core, ...symbols.major, ...symbols.watch])];
     const { logger, repository } = this.deps;
-    const sessionBoundary = getSessionBoundaryForDate(session, new Date());
+    const sessionBoundary = getSessionBoundaryForDate(session, boundaryDate);
     const sessionWindowStart = new Date(sessionBoundary.startMs);
     const sessionWindowEnd = new Date(sessionBoundary.endMs);
     const baseRunKey = `${session}:${sessionWindowStart.toISOString()}`;
@@ -525,7 +549,7 @@ export class OverviewRunner {
       // 3. Collect events from all collectors in parallel (failures are soft)
       const runCtx: CollectorRunContext = {
         session,
-        now: new Date(),
+        now: runNow,
         timezone: 'UTC',
         symbols,
         sessionWindow: {
@@ -605,13 +629,16 @@ export class OverviewRunner {
       // 5b. Build session context using BTC as the reference instrument
       const btcSnapshot = marketSnapshots.find((s) => s.symbol === 'BTCUSDT');
       const ethSnapshot = marketSnapshots.find((s) => s.symbol === 'ETHUSDT');
+      const previousSessionBoundary = getPreviousSessionBoundaryForDate(session, boundaryDate);
       const sessionCtx = btcSnapshot !== undefined
-        ? buildSessionContext(
+        ? buildSessionContext({
             session,
-            btcSnapshot.latestPrice,
-            btcSnapshot.candles.fourHour,
-            getPreviousSessionBoundaryForDate(session, new Date()),
-          )
+            currentPrice: btcSnapshot.latestPrice,
+            fourHourCandles: btcSnapshot.candles.fourHour,
+            currentBoundary: sessionBoundary,
+            previousBoundary: previousSessionBoundary,
+            now: runNow,
+          })
         : null;
 
       // 5c. Production Alts breadth must come from a broad alt universe collector,
@@ -817,6 +844,7 @@ export class OverviewRunner {
       }
       const outputBase = {
         ...llmResult.output,
+        session,
         marketRegime: confidenceAdjustedRegime.marketRegime,
         briefConfidence: confidenceAdjustedRegime.briefConfidence,
         confidenceBreakdown,
@@ -871,7 +899,11 @@ export class OverviewRunner {
             ? crossMarket.ethBtcTrendLabel
             : llmResult.output.eth.vsbtc,
         },
-        scenarios: buildDeterministicScenarios(btcLevels, llmResult.output.scenarios),
+        scenarios: buildSessionAwareScenarios({
+          sessionContext: sessionCtx,
+          fallbackHtfLevels: btcLevels,
+          fallback: llmResult.output.scenarios,
+        }),
         events: {
           ...llmResult.output.events,
           upcoming: precomputedEvents.upcomingEvents.length > 0
@@ -883,6 +915,21 @@ export class OverviewRunner {
         ...(llmErrorKind !== undefined ? { llmErrorKind } : {}),
         outputSource: generationMode === 'LLM_JSON' ? 'llm_json' : 'deterministic_fallback',
       };
+      const sessionLevels = buildSessionLevelsPresentation(sessionCtx);
+      if (sessionLevels !== undefined) {
+        outputBase.liquidity = {
+          ...outputBase.liquidity,
+          ...(sessionLevels.recovery !== undefined
+            ? { recoveryZone: formatSessionLevel(sessionLevels.recovery) }
+            : {}),
+          ...(sessionLevels.resistance !== undefined
+            ? { immediateUpside: formatSessionLevel(sessionLevels.resistance) }
+            : {}),
+          ...(sessionLevels.vulnerability !== undefined
+            ? { downsideVulnerability: `below ${formatSessionLevel(sessionLevels.vulnerability)}` }
+            : {}),
+        };
+      }
       const optionsReference = buildOptionsReference(augmentedInput.optionsContext);
       if (optionsReference !== undefined) {
         outputBase.liquidity = {

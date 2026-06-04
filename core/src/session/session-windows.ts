@@ -49,3 +49,26 @@ export function getPreviousSessionBoundaryForDate(session: CryptoSession, utcDat
     : utcDate;
   return getSessionBoundaryForDate(prev, date);
 }
+
+function getDatePartInTimeZone(date: Date, timeZone: string, partType: 'year' | 'month' | 'day'): number {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const part = parts.find((p) => p.type === partType)?.value;
+  if (part === undefined) throw new Error(`Could not resolve ${partType} for timezone ${timeZone}`);
+  return Number(part);
+}
+
+export function getSessionBoundaryForScheduledRun(params: {
+  session: CryptoSession;
+  runAt: Date;
+  scheduleTimezone: string;
+}): SessionBoundary {
+  const year = getDatePartInTimeZone(params.runAt, params.scheduleTimezone, 'year');
+  const month = getDatePartInTimeZone(params.runAt, params.scheduleTimezone, 'month');
+  const day = getDatePartInTimeZone(params.runAt, params.scheduleTimezone, 'day');
+  return getSessionBoundaryForDate(params.session, new Date(Date.UTC(year, month - 1, day)));
+}

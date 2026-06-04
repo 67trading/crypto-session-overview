@@ -4,6 +4,7 @@ import {
   getSessionBoundaryForDate,
   getPreviousSession,
   getPreviousSessionBoundaryForDate,
+  getSessionBoundaryForScheduledRun,
 } from '../../src/session/session-windows.js';
 
 function utcDate(hour: number): Date {
@@ -109,5 +110,60 @@ describe('getPreviousSessionBoundaryForDate', () => {
     const prevDayStart = Date.UTC(2024, 0, 31); // 2024-01-31
     expect(boundary.session).toBe('US_CRYPTO');
     expect(boundary.startMs).toBe(prevDayStart + 13 * 3_600_000);
+  });
+});
+
+describe('getSessionBoundaryForScheduledRun', () => {
+  it('targets the Berlin local date for ASIA_CRYPTO after UTC date rollover risk', () => {
+    const boundary = getSessionBoundaryForScheduledRun({
+      session: 'ASIA_CRYPTO',
+      runAt: new Date('2026-06-03T23:30:00.000Z'),
+      scheduleTimezone: 'Europe/Berlin',
+    });
+
+    expect(new Date(boundary.startMs).toISOString()).toBe('2026-06-04T00:00:00.000Z');
+    expect(new Date(boundary.endMs).toISOString()).toBe('2026-06-04T08:00:00.000Z');
+  });
+
+  it('targets the current UTC date for Berlin winter ASIA_CRYPTO runs', () => {
+    const boundary = getSessionBoundaryForScheduledRun({
+      session: 'ASIA_CRYPTO',
+      runAt: new Date('2026-01-15T00:30:00.000Z'),
+      scheduleTimezone: 'Europe/Berlin',
+    });
+
+    expect(new Date(boundary.startMs).toISOString()).toBe('2026-01-15T00:00:00.000Z');
+  });
+
+  it('keeps Europe and US sessions on the scheduler local date', () => {
+    const europe = getSessionBoundaryForScheduledRun({
+      session: 'EUROPE_CRYPTO',
+      runAt: new Date('2026-06-04T06:30:00.000Z'),
+      scheduleTimezone: 'Europe/Berlin',
+    });
+    const us = getSessionBoundaryForScheduledRun({
+      session: 'US_CRYPTO',
+      runAt: new Date('2026-06-04T13:00:00.000Z'),
+      scheduleTimezone: 'Europe/Berlin',
+    });
+
+    expect(new Date(europe.startMs).toISOString()).toBe('2026-06-04T07:00:00.000Z');
+    expect(new Date(us.startMs).toISOString()).toBe('2026-06-04T13:00:00.000Z');
+  });
+
+  it('keeps US target date correct around US daylight saving offset differences', () => {
+    const summer = getSessionBoundaryForScheduledRun({
+      session: 'US_CRYPTO',
+      runAt: new Date('2026-06-04T13:00:00.000Z'),
+      scheduleTimezone: 'Europe/Berlin',
+    });
+    const winter = getSessionBoundaryForScheduledRun({
+      session: 'US_CRYPTO',
+      runAt: new Date('2026-01-15T14:00:00.000Z'),
+      scheduleTimezone: 'Europe/Berlin',
+    });
+
+    expect(new Date(summer.startMs).toISOString()).toBe('2026-06-04T13:00:00.000Z');
+    expect(new Date(winter.startMs).toISOString()).toBe('2026-01-15T13:00:00.000Z');
   });
 });

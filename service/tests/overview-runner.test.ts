@@ -55,6 +55,38 @@ function makeWeakRangeBtcSnapshot(): OverviewMarketSnapshot {
   };
 }
 
+function fixedCandle(openIso: string, open: number, high: number, low: number, close: number): HtfCandle {
+  const openTimeMs = new Date(openIso).getTime();
+  return { openTimeMs, closeTimeMs: openTimeMs + 4 * 3600_000, open, high, low, close, volume: 1000 };
+}
+
+function makeSessionMatrixBtcSnapshot(): OverviewMarketSnapshot {
+  return {
+    symbol: 'BTCUSDT',
+    latestPrice: 65_000,
+    candles: {
+      weekly: [
+        fixedCandle('2026-05-25T00:00:00.000Z', 66_000, 68_000, 61_000, 65_000),
+        fixedCandle('2026-06-01T00:00:00.000Z', 65_000, 67_000, 62_000, 65_000),
+      ],
+      daily: [
+        fixedCandle('2026-06-03T00:00:00.000Z', 65_000, 66_000, 61_000, 64_000),
+        fixedCandle('2026-06-04T00:00:00.000Z', 64_000, 67_000, 62_000, 65_000),
+      ],
+      fourHour: [
+        fixedCandle('2026-06-03T12:00:00.000Z', 63_000, 66_100, 62_500, 64_500),
+        fixedCandle('2026-06-03T16:00:00.000Z', 64_500, 66_800, 63_900, 65_100),
+        fixedCandle('2026-06-03T20:00:00.000Z', 65_100, 66_300, 64_000, 64_200),
+        fixedCandle('2026-06-04T00:00:00.000Z', 64_200, 65_900, 63_800, 64_900),
+        fixedCandle('2026-06-04T04:00:00.000Z', 64_900, 66_500, 64_100, 65_500),
+        fixedCandle('2026-06-04T08:00:00.000Z', 65_500, 67_000, 64_800, 66_000),
+        fixedCandle('2026-06-04T12:00:00.000Z', 66_000, 67_500, 65_100, 65_800),
+        fixedCandle('2026-06-04T16:00:00.000Z', 65_800, 66_400, 64_900, 65_200),
+      ],
+    },
+  };
+}
+
 function makeDerivatives(symbol: string): DerivativesContext {
   return { symbol, fundingStatus: 'neutral', oiStatus: 'stable', positioningStatus: 'balanced' };
 }
@@ -148,6 +180,80 @@ describe('OverviewRunner.run()', () => {
     expect(result.overviewId).toBe('overview-id-1');
     expect(result.session).toBe('US_CRYPTO');
     expect(result.telegramPublished).toBe(false);
+  });
+
+  it.each([
+    ['ASIA_CRYPTO', 'Crypto Asia Brief ·', 'US session high', 'Asia session open', new Date('2026-06-04T01:00:00.000Z')],
+    ['EUROPE_CRYPTO', 'Crypto Europe Brief ·', 'Asia session high', 'session low', new Date('2026-06-04T09:00:00.000Z')],
+    ['US_CRYPTO', 'Crypto US Brief ·', 'Europe session high', 'session low', new Date('2026-06-04T14:00:00.000Z')],
+  ] as const)('renders session-aware title, levels, and scenarios for %s', async (session, title, previousHighLabel, rejectionLabel, now) => {
+    const repo = makeRepo();
+    const deps = makeDeps({
+      repository: repo,
+      marketDataCollector: {
+        collect: vi.fn().mockResolvedValue([
+          makeSessionMatrixBtcSnapshot(),
+          makeSnapshot('ETHUSDT', 3200),
+        ]),
+      },
+      llmClient: {
+        modelName: 'test-model',
+        generateOverview: vi.fn().mockResolvedValue({ output: makeValidOutput(session) }),
+      },
+    });
+    const runner = new OverviewRunner(deps);
+
+    const result = await runner.run({
+      ...RUN_OPTIONS,
+      session,
+      force: true,
+      now,
+      targetSessionDate: '2026-06-04',
+    });
+
+    expect(result.status).toBe('SUCCESS');
+    expect(result.humanReport).toContain(title);
+    expect(result.output?.liquidity.recoveryZone).toContain(previousHighLabel);
+    expect(result.output?.liquidity.immediateUpside).toBeUndefined();
+    expect(result.output?.scenarios.reclaim).toContain(previousHighLabel);
+    expect(result.output?.scenarios.rejection).toContain(rejectionLabel);
+    expect(repo.saveOverview).toHaveBeenCalledWith(expect.objectContaining({
+      session,
+      outputJson: expect.objectContaining({ session }),
+    }));
+  });
+
+  it('uses targetSessionDate for runKey and session window calculation', async () => {
+    const repo = makeRepo();
+    const runner = new OverviewRunner(makeDeps({
+      repository: repo,
+      llmClient: {
+        modelName: 'test-model',
+        generateOverview: vi.fn().mockResolvedValue({ output: makeValidOutput('ASIA_CRYPTO') }),
+      },
+    }));
+
+    await runner.run({
+      ...RUN_OPTIONS,
+      session: 'ASIA_CRYPTO',
+      now: new Date('2026-06-03T23:30:00.000Z'),
+      targetSessionDate: '2026-06-04',
+    });
+
+    expect(repo.saveOverview).toHaveBeenCalledWith(expect.objectContaining({
+      runKey: 'ASIA_CRYPTO:2026-06-04T00:00:00.000Z',
+      sessionWindowStart: new Date('2026-06-04T00:00:00.000Z'),
+      sessionWindowEnd: new Date('2026-06-04T08:00:00.000Z'),
+    }));
+  });
+
+  it('rejects calendar-invalid targetSessionDate values before building session boundaries', async () => {
+    const runner = new OverviewRunner(makeDeps());
+
+    await expect(runner.run({
+      ...RUN_OPTIONS,
+      targetSessionDate: '2026-13-45',
+    })).rejects.toThrow('Invalid targetSessionDate: 2026-13-45');
   });
 
   it('overrides contradictory LLM BTC presentation with deterministic BTC context', async () => {

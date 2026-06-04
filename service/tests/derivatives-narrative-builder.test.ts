@@ -212,4 +212,46 @@ describe('buildDerivativesNarrative()', () => {
     expect(result.oi).toBe('neutral on 1/3 venues; OI present without change window on OKX');
     expect(result.verificationStatus).toBe('source_scoped');
   });
+
+  it('uses source-safe positioning wording for mixed cross-venue consensus', () => {
+    const consensus: DerivativesConsensus = {
+      combinedLabel: 'mixed',
+      confidenceContribution: 0.5,
+      funding: {
+        metric: 'funding',
+        asset: 'BTC',
+        venuesRequired: ['bybit', 'binance', 'okx'],
+        venuesAvailable: ['bybit', 'binance', 'okx'],
+        coverageScore: 1,
+        agreementScore: 1,
+        direction: 'neutral',
+        perVenue: [],
+        conflicts: [],
+        verificationStatus: 'confirmed_cross_venue',
+      },
+      openInterest: {
+        metric: 'open_interest',
+        asset: 'BTC',
+        venuesRequired: ['bybit', 'binance', 'okx'],
+        venuesAvailable: ['bybit', 'binance'],
+        coverageScore: 0.66,
+        agreementScore: 0.5,
+        direction: 'mixed',
+        perVenue: [
+          { venue: 'bybit', direction: 'neutral', verificationStatus: 'source_scoped' },
+          { venue: 'binance', direction: 'bearish', verificationStatus: 'source_scoped' },
+        ],
+        conflicts: [{ venue: 'binance', direction: 'bearish', reason: 'bybit neutral vs binance bearish' }],
+        verificationStatus: 'ambiguous',
+      },
+    };
+
+    const result = buildDerivativesNarrative(
+      { BTCUSDT: makeCtx('neutral', 'stable', 'balanced') },
+      ['BTCUSDT', 'ETHUSDT'],
+      consensus,
+    );
+
+    expect(result.positioning).toBe('mixed/incomplete cross-venue derivatives read');
+  });
 });

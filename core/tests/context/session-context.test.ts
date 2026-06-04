@@ -2,20 +2,23 @@ import { describe, it, expect } from 'vitest';
 import {
   extractSessionHighLow,
   detectSessionContinuation,
+  buildSessionContext,
 } from '../../src/context/session-context.js';
 import type { HtfCandle } from '../../src/levels/htf-levels.js';
 
+const FOUR_HOURS_MS = 14_400_000;
+
 function makeCandle(openTimeMs: number, high: number, low: number, open: number, close: number): HtfCandle {
-  return { openTimeMs, closeTimeMs: openTimeMs + 14_400_000, high, low, open, close, volume: 1000 };
+  return { openTimeMs, closeTimeMs: openTimeMs + FOUR_HOURS_MS, high, low, open, close, volume: 1000 };
 }
 
-const boundary = { startMs: 1_000, endMs: 5_000 };
+const boundary = { startMs: FOUR_HOURS_MS, endMs: FOUR_HOURS_MS * 3 };
 
 const candles: HtfCandle[] = [
-  makeCandle(500, 110, 90, 95, 105),   // before boundary
-  makeCandle(1_000, 120, 95, 100, 115), // inside
-  makeCandle(2_000, 125, 100, 115, 118), // inside
-  makeCandle(5_000, 130, 105, 118, 128), // at endMs (excluded)
+  makeCandle(0, 110, 90, 95, 105),   // before boundary
+  makeCandle(FOUR_HOURS_MS, 120, 95, 100, 115), // inside
+  makeCandle(FOUR_HOURS_MS * 2, 125, 100, 115, 118), // inside
+  makeCandle(FOUR_HOURS_MS * 3, 130, 105, 118, 128), // at endMs (excluded)
 ];
 
 describe('extractSessionHighLow', () => {
@@ -25,17 +28,116 @@ describe('extractSessionHighLow', () => {
     expect(result!.high).toBe(125);
     expect(result!.low).toBe(95);
     expect(result!.open).toBe(100);
+    expect(result!.close).toBe(118);
     expect(result!.session).toBe('ASIA_CRYPTO');
   });
 
   it('returns null when no candles fall in boundary', () => {
-    const result = extractSessionHighLow('ASIA_CRYPTO', candles, { startMs: 10_000, endMs: 20_000 });
+    const result = extractSessionHighLow('ASIA_CRYPTO', candles, {
+      startMs: FOUR_HOURS_MS * 5,
+      endMs: FOUR_HOURS_MS * 6,
+    });
     expect(result).toBeNull();
   });
 
   it('midpoint is average of high and low', () => {
     const result = extractSessionHighLow('ASIA_CRYPTO', candles, boundary);
     expect(result!.midpoint).toBe((125 + 95) / 2);
+  });
+
+  it('does not include pre-boundary candles for non-4h-aligned sessions', () => {
+    const result = extractSessionHighLow('EUROPE_CRYPTO', [
+      { openTimeMs: Date.UTC(2026, 5, 4, 4), closeTimeMs: Date.UTC(2026, 5, 4, 8), open: 100, high: 200, low: 50, close: 110, volume: 1 },
+      { openTimeMs: Date.UTC(2026, 5, 4, 8), closeTimeMs: Date.UTC(2026, 5, 4, 12), open: 110, high: 130, low: 105, close: 120, volume: 1 },
+      { openTimeMs: Date.UTC(2026, 5, 4, 12), closeTimeMs: Date.UTC(2026, 5, 4, 16), open: 120, high: 140, low: 115, close: 125, volume: 1 },
+    ], {
+      startMs: Date.UTC(2026, 5, 4, 7),
+      endMs: Date.UTC(2026, 5, 4, 16),
+    });
+
+    expect(result?.high).toBe(140);
+    expect(result?.low).toBe(105);
+    expect(result?.open).toBe(110);
+  });
+});
+
+describe('buildSessionContext', () => {
+  it('does not use a pre-boundary 4H candle as current session open', () => {
+    const currentBoundary = {
+      session: 'EUROPE_CRYPTO' as const,
+      startMs: Date.UTC(2026, 5, 4, 7),
+      endMs: Date.UTC(2026, 5, 4, 16),
+    };
+    const previousBoundary = {
+      session: 'ASIA_CRYPTO' as const,
+      startMs: Date.UTC(2026, 5, 4, 0),
+      endMs: Date.UTC(2026, 5, 4, 8),
+    };
+    const candlesForContext: HtfCandle[] = [
+      { openTimeMs: Date.UTC(2026, 5, 4, 0), closeTimeMs: Date.UTC(2026, 5, 4, 4), open: 100, high: 120, low: 90, close: 110, volume: 1 },
+      { openTimeMs: Date.UTC(2026, 5, 4, 4), closeTimeMs: Date.UTC(2026, 5, 4, 8), open: 110, high: 125, low: 105, close: 115, volume: 1 },
+      { openTimeMs: Date.UTC(2026, 5, 4, 8), closeTimeMs: Date.UTC(2026, 5, 4, 12), open: 115, high: 130, low: 112, close: 118, volume: 1 },
+    ];
+
+    const result = buildSessionContext({
+      session: 'EUROPE_CRYPTO',
+      currentPrice: 116,
+      fourHourCandles: candlesForContext,
+      currentBoundary,
+      previousBoundary,
+      now: new Date(Date.UTC(2026, 5, 4, 9)),
+    });
+
+    expect(result.previousSessionHighLow).toEqual(expect.objectContaining({
+      high: 125,
+      low: 90,
+      open: 100,
+      close: 115,
+    }));
+    expect(result.currentSessionOpen).toBeUndefined();
+    expect(result.currentSessionOpenStatus).toBe('unavailable');
+  });
+
+  it('uses an exact boundary candle as current session open', () => {
+    const currentBoundary = {
+      session: 'ASIA_CRYPTO' as const,
+      startMs: Date.UTC(2026, 5, 4, 0),
+      endMs: Date.UTC(2026, 5, 4, 8),
+    };
+    const result = buildSessionContext({
+      session: 'ASIA_CRYPTO',
+      currentPrice: 116,
+      fourHourCandles: [
+        { openTimeMs: Date.UTC(2026, 5, 4, 0), closeTimeMs: Date.UTC(2026, 5, 4, 4), open: 111, high: 120, low: 100, close: 115, volume: 1 },
+      ],
+      currentBoundary,
+      previousBoundary: null,
+      now: new Date(Date.UTC(2026, 5, 4, 1)),
+    });
+
+    expect(result.currentSessionOpen).toBe(111);
+    expect(result.currentSessionOpenStatus).toBe('confirmed');
+  });
+
+  it('does not fabricate a current session open before the session starts', () => {
+    const currentBoundary = {
+      session: 'US_CRYPTO' as const,
+      startMs: Date.UTC(2026, 5, 4, 13),
+      endMs: Date.UTC(2026, 5, 4, 21),
+    };
+    const result = buildSessionContext({
+      session: 'US_CRYPTO',
+      currentPrice: 116,
+      fourHourCandles: [
+        { openTimeMs: Date.UTC(2026, 5, 4, 8), closeTimeMs: Date.UTC(2026, 5, 4, 12), open: 100, high: 120, low: 90, close: 110, volume: 1 },
+      ],
+      currentBoundary,
+      previousBoundary: null,
+      now: new Date(Date.UTC(2026, 5, 4, 12)),
+    });
+
+    expect(result.currentSessionOpen).toBeUndefined();
+    expect(result.currentSessionOpenStatus).toBe('not_started');
   });
 });
 
@@ -46,6 +148,7 @@ describe('detectSessionContinuation', () => {
     low: 80,
     midpoint: 90,
     open: 85,
+    close: 88,
   };
 
   it('returns breakout_above when price is > 0.1% above high', () => {

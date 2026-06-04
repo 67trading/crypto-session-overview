@@ -1,9 +1,7 @@
 import type { HtfLevelsSnapshot, OverviewOutput } from './ports.js';
-
-function fmt(value: number | undefined): string | undefined {
-  if (value === undefined || !Number.isFinite(value)) return undefined;
-  return Number(value.toFixed(2)).toLocaleString('en-US', { maximumFractionDigits: 2 });
-}
+import type { SessionContext } from '../../core/src/index.js';
+import { getSessionDisplay } from './session-display.js';
+import { buildSessionLevelsPresentation, formatSessionLevelValue } from './session-levels-builder.js';
 
 export function buildDeterministicScenarios(
   levels: HtfLevelsSnapshot | undefined,
@@ -14,20 +12,58 @@ export function buildDeterministicScenarios(
   const supportLow = levels?.fourHour?.supportZone.low ?? levels?.fourHour?.lastSwingLow;
   const resistanceHigh = levels?.fourHour?.resistanceZone.high ?? levels?.fourHour?.lastSwingHigh;
 
-  const reclaimLevel = fmt(dailyMidpoint ?? resistanceHigh);
-  const rejectLevel = fmt(currentDayOpen ?? resistanceHigh);
-  const chopLow = fmt(supportLow);
-  const chopHigh = fmt(currentDayOpen ?? dailyMidpoint ?? resistanceHigh);
+  const reclaimLevel = dailyMidpoint ?? resistanceHigh;
+  const rejectLevel = currentDayOpen ?? resistanceHigh;
+  const rawChopLow = supportLow;
+  const rawChopHigh = currentDayOpen ?? dailyMidpoint ?? resistanceHigh;
+  const chopLow = rawChopLow !== undefined && rawChopHigh !== undefined ? Math.min(rawChopLow, rawChopHigh) : undefined;
+  const chopHigh = rawChopLow !== undefined && rawChopHigh !== undefined ? Math.max(rawChopLow, rawChopHigh) : undefined;
 
   return {
     reclaim: reclaimLevel !== undefined
-      ? `Above ${reclaimLevel} → relief attempt.`
+      ? `Above ${formatSessionLevelValue(reclaimLevel)} → relief attempt.`
       : fallback.reclaim,
     rejection: rejectLevel !== undefined
-      ? `Below ${rejectLevel} → pressure remains.`
+      ? `Below ${formatSessionLevelValue(rejectLevel)} → pressure remains.`
       : fallback.rejection,
     chop: chopLow !== undefined && chopHigh !== undefined
-      ? `${chopLow}–${chopHigh} → range/chop conditions.`
+      ? `${formatSessionLevelValue(chopLow)}–${formatSessionLevelValue(chopHigh)} → range/chop conditions.`
       : fallback.chop,
+  };
+}
+
+export function buildSessionAwareScenarios(params: {
+  sessionContext: SessionContext | null | undefined;
+  fallbackHtfLevels: HtfLevelsSnapshot | undefined;
+  fallback: OverviewOutput['scenarios'];
+}): OverviewOutput['scenarios'] {
+  const sessionContext = params.sessionContext;
+  if (sessionContext === null || sessionContext === undefined) {
+    return buildDeterministicScenarios(params.fallbackHtfLevels, params.fallback);
+  }
+  const previous = sessionContext.previousSessionHighLow;
+  if (previous === undefined) {
+    return buildDeterministicScenarios(params.fallbackHtfLevels, params.fallback);
+  }
+
+  const levels = buildSessionLevelsPresentation(sessionContext);
+  if (levels?.reclaim === undefined || levels.vulnerability === undefined) {
+    return buildDeterministicScenarios(params.fallbackHtfLevels, params.fallback);
+  }
+  const display = getSessionDisplay(sessionContext.currentSession);
+  const currentOpen = sessionContext.currentSessionOpen;
+  const rejectLevel = sessionContext.currentSessionOpenStatus === 'confirmed' && currentOpen !== undefined
+    ? { value: currentOpen, label: `${display.currentSessionLabel} session open` }
+    : levels.vulnerability;
+  const rawChopHigh = sessionContext.currentSessionOpenStatus === 'confirmed' && currentOpen !== undefined
+    ? currentOpen
+    : previous.midpoint;
+  const chopLow = Math.min(previous.low, rawChopHigh);
+  const chopHigh = Math.max(previous.low, rawChopHigh);
+
+  return {
+    reclaim: `Above ${formatSessionLevelValue(levels.reclaim.value)} (${levels.reclaim.label}) → relief attempt.`,
+    rejection: `Below ${formatSessionLevelValue(rejectLevel.value)} (${rejectLevel.label}) → pressure remains.`,
+    chop: `${formatSessionLevelValue(chopLow)}–${formatSessionLevelValue(chopHigh)} → range/chop conditions.`,
   };
 }
