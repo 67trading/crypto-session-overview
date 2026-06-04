@@ -1,4 +1,15 @@
 import type { OverviewOutput, CryptoSession } from './ports.js';
+import {
+  btcLevelLabel,
+  buildPresentationLabels,
+  eventMarker,
+  eventTimePrefix,
+  formatAltRotation,
+  formatDerivativesOi,
+  formatEventDetailForTitle,
+  formatEventTitleForTelegram,
+  marketMarker,
+} from './presentation-state.js';
 
 const SESSION_LABEL: Record<CryptoSession, string> = {
   ASIA_CRYPTO: 'Asia',
@@ -267,76 +278,11 @@ function confidenceMarker(confidence: OverviewOutput['briefConfidence']): string
   return '⚪';
 }
 
-function marketMarker(value: string): string {
-  const normalized = value.toLowerCase();
-  if (normalized.includes('liquidation') || normalized.includes('stress') || normalized.includes('extreme') || normalized.includes('heavy') || normalized.includes('crowded')) return '⚫';
-  if (normalized.includes('bull') || normalized.includes('risk_on') || normalized.includes('constructive') || normalized.includes('improving')) return '🟢';
-  if (normalized.includes('bear') || normalized.includes('risk_off') || normalized.includes('defensive') || normalized.includes('weak') || normalized.includes('short_heavy')) return '🔴';
-  if (normalized.includes('mixed') || normalized.includes('transition') || normalized.includes('range') || normalized.includes('selective')) return '🟡';
-  return '⚪';
-}
-
-function parseBreadthPercent(text: string): number | undefined {
-  const match = text.match(/(\d+(?:\.\d+)?)%/);
-  if (match === null) return undefined;
-  const value = Number(match[1]);
-  return Number.isFinite(value) ? value : undefined;
-}
-
-function formatBroadAltPerpRotation(output: OverviewOutput): string {
-  const pct = parseBreadthPercent(output.alts.breadth);
-  if (pct === undefined) {
-    if (output.alts.rotationState === 'broad_rotation') return 'broad rotation';
-    if (output.alts.rotationState === 'selective_rotation') return 'mixed';
-    if (output.alts.rotationState === 'weak' || output.alts.rotationState === 'no_rotation') return 'broad perp weakness';
-    return output.alts.rotationState.replace(/_/g, ' ');
-  }
-  if (pct <= 25) return 'broad perp weakness';
-  if (pct < 45) return 'weak/mixed';
-  if (pct < 60) return 'mixed';
-  if (pct < 65) return 'selective rotation';
-  return 'broad rotation';
-}
-
-function altMarker(output: OverviewOutput): string {
-  const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string; canRenderBroadLabel?: boolean };
-  if (altsMeta.sourceScope !== 'broad_alt_perp_tape' || altsMeta.canRenderBroadLabel === false || output.alts.rotationState === 'unknown') {
-    return marketMarker(`${output.alts.rotationState} ${output.alts.breadth}`);
-  }
-  const pct = parseBreadthPercent(output.alts.breadth);
-  if (pct === undefined) return marketMarker(`${output.alts.rotationState} ${output.alts.breadth}`);
-  if (pct <= 25) return '🔴';
-  if (pct < 60) return '🟡';
-  if (pct < 65) return '⚪';
-  return '🟢';
-}
-
 function formatRegimeForTelegram(output: OverviewOutput): string {
   if (output.marketRegime === 'short_heavy_near_support' && !output.derivatives.positioning.toLowerCase().includes('short')) {
     return 'Defensive breakdown near support';
   }
   return output.marketRegime.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function formatAltRotation(output: OverviewOutput): string {
-  const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string };
-  if (altsMeta.sourceScope === 'broad_alt_perp_tape') {
-    if ((altsMeta as { canRenderBroadLabel?: boolean }).canRenderBroadLabel === false || output.alts.rotationState === 'unknown') return 'unavailable';
-    return formatBroadAltPerpRotation(output);
-  }
-  if (altsMeta.sourceScope === 'tracked_basket') {
-    return 'unavailable';
-  }
-  return output.alts.rotationState.replace(/_/g, ' ');
-}
-
-function formatAltScope(output: OverviewOutput): string {
-  const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string; universeName?: string; minVolumeUsd?: number };
-  if (altsMeta.sourceScope === 'broad_alt_perp_tape') {
-    return altsMeta.universeName ?? 'Bybit/Binance/OKX liquid USDT perp tape';
-  }
-  if (altsMeta.sourceScope === 'market_wide_top_n') return 'market-cap universe';
-  return 'broad alt perp tape unavailable; configured symbols are not used for production Alts breadth';
 }
 
 function formatEthUsd24hLabel(output: OverviewOutput): string {
@@ -348,78 +294,6 @@ function formatEthUsd24hLabel(output: OverviewOutput): string {
 function formatSpotPrice(value: number | undefined): string | undefined {
   if (value === undefined || !Number.isFinite(value)) return undefined;
   return Number(value.toFixed(2)).toLocaleString('en-US', { maximumFractionDigits: 2 });
-}
-
-function eventMarker(importance: string): string {
-  if (importance === 'critical' || importance === 'high') return '🔴';
-  if (importance === 'medium') return '🟠';
-  if (importance === 'low') return '🔵';
-  return '⚪';
-}
-
-function eventTimePrefix(displayTimeType: string | undefined): string {
-  if (displayTimeType === 'tradingEndsAt') return 'trading ends';
-  if (displayTimeType === 'effectiveAt') return 'effective';
-  if (displayTimeType === 'publishedAt') return 'announced';
-  if (displayTimeType === 'detectedAt') return 'detected';
-  return '';
-}
-
-function formatConfidenceReason(output: OverviewOutput): string | undefined {
-  const derivativesMeta = output.derivatives as OverviewOutput['derivatives'] & { sourceScope?: string; verificationStatus?: string };
-  if (derivativesMeta.sourceScope === 'cross_venue' && derivativesMeta.verificationStatus !== 'confirmed_cross_venue') {
-    return 'OI trend coverage is incomplete, so high confidence is capped.';
-  }
-  return output.confidenceBreakdown?.reasons[0];
-}
-
-function formatDerivativesOi(oi: string): string {
-  const match = oi.match(/^(.*?);\s*OI present without change window on (.+)$/i);
-  if (match !== null) {
-    return `${match[1]}; ${match[2]} has present OI only, no change window`;
-  }
-  return oi;
-}
-
-function formatEventDetail(detail: string): string {
-  if (detail === 'Effective time not parsed.') return 'Effective/trading-end time not parsed.';
-  return detail;
-}
-
-function isListingEvent(title: string): boolean {
-  return /\b(listing|list|launch)\b/i.test(title) && !/\bdelist/i.test(title);
-}
-
-function isDelistingEvent(title: string): boolean {
-  return /\bdelist/i.test(title);
-}
-
-function formatEventDetailForTitle(detail: string, title: string): string {
-  if (detail === 'Effective time not parsed.') {
-    if (isDelistingEvent(title)) return 'Trading-end/effective time not parsed.';
-    if (isListingEvent(title)) return 'Trading start/effective time not parsed.';
-  }
-  return formatEventDetail(detail);
-}
-
-function formatEventTitleForTelegram(title: string): string {
-  return title
-    .replace(/,\s*with up to \d+x leverage\b/ig, '')
-    .replace(/\s+with up to \d+x leverage\b/ig, '')
-    .replace(/\s+-\s+up to \d+x leverage\b/ig, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function btcLevelLabel(level: string, index: number): string {
-  if (index === 0 && /\b(previous week|weekly|previous month|monthly|HTF)\b/i.test(level)) return 'Major recovery/ref';
-  return index === 0 ? 'Recovery/ref' : 'Resistance/ref';
-}
-
-function formatDerivativesMarker(output: OverviewOutput): string {
-  const derivativesMeta = output.derivatives as OverviewOutput['derivatives'] & { sourceScope?: string; verificationStatus?: string };
-  if (derivativesMeta.sourceScope === 'cross_venue' && derivativesMeta.verificationStatus !== 'confirmed_cross_venue') return '🟡';
-  return marketMarker(output.derivatives.positioning);
 }
 
 function isInitialRead(output: OverviewOutput): boolean {
@@ -622,25 +496,12 @@ export class OverviewFormatter {
     const ethMeta = output.eth as OverviewOutput['eth'] & { headerLabel?: string; ethUsd24hLabel?: string };
     const ethHeader = ethMeta.headerLabel ?? 'ETH context';
     const ethMarker = marketMarker(`${output.eth.vsbtc} ${ethHeader}`);
-    const altsMarker = altMarker(output);
+    const labels = buildPresentationLabels(output);
+    const altsMarker = labels.alts.marker;
     const derivativesMeta = output.derivatives as OverviewOutput['derivatives'] & { sourceScope?: string; verificationStatus?: string };
-    const derivativesMarker = formatDerivativesMarker(output);
-    const rotationDisplay = formatAltRotation(output);
-    const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string };
-    const altsHeader = altsMeta.sourceScope === 'broad_alt_perp_tape' && (altsMeta as { canRenderBroadLabel?: boolean }).canRenderBroadLabel !== false && output.alts.rotationState !== 'unknown'
-      ? formatAltRotation(output)
-      : altsMeta.sourceScope === 'broad_alt_perp_tape'
-      ? 'unavailable'
-      : altsMeta.sourceScope === 'tracked_basket'
-      ? 'unavailable'
-      : rotationDisplay;
-    const derivativesHeader = derivativesMeta.sourceScope === 'cross_venue' && derivativesMeta.verificationStatus === 'confirmed_cross_venue'
-      ? 'cross-venue neutral'
-      : derivativesMeta.sourceScope === 'cross_venue'
-      ? 'funding confirmed, OI incomplete'
-      : derivativesMeta.sourceScope === 'single_venue'
-      ? 'Bybit-scoped neutral'
-      : output.derivatives.positioning.toLowerCase().includes('neutral') || output.derivatives.positioning.toLowerCase().includes('balanced') ? 'neutral' : 'positioning';
+    const derivativesMarker = labels.derivatives.marker;
+    const altsHeader = labels.alts.header;
+    const derivativesHeader = labels.derivatives.header;
     const btcSpot = formatSpotPrice(output.btc.spotPrice);
     const ethSpot = formatSpotPrice(output.eth.spotPrice);
     const btcLevels = formatHtmlLevels(output.btc.keyLevels, 2);
@@ -674,10 +535,10 @@ export class OverviewFormatter {
     ].filter((line) => line.trim() !== '•').slice(0, 4);
     const altsBullets = [
       `Breadth: ${compactComplete(output.alts.breadth, 80)}`,
-      `Scope: ${formatAltScope(output)}`,
+      `Scope: ${labels.alts.scope}`,
     ];
     const derivativesSuffix = derivativesMeta.sourceScope === 'single_venue'
-      ? ' · Bybit-scoped'
+      ? ' · source-scoped'
       : '';
     const derivativesBullets = [
       `Funding: ${compactComplete(output.derivatives.funding, 52)}${derivativesSuffix}`,
@@ -688,7 +549,7 @@ export class OverviewFormatter {
     ];
     const coverageSummary = (output as OverviewOutput & { coverage?: { summary: string } }).coverage?.summary;
     const flowBullets = (output as OverviewOutput & { flows?: { bullets: string[] } }).flows?.bullets ?? [];
-    const confidenceReason = formatConfidenceReason(output);
+    const confidenceReason = labels.confidenceReason;
     const liquidityLines = compactHtmlLiquidityLines(output);
 
     const lines: string[] = [
