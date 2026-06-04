@@ -61,6 +61,10 @@ function containsAny(text: string, terms: readonly string[]): boolean {
   return terms.some((term) => normalized.includes(term));
 }
 
+function hasFundingNegativeSignal(text: string): boolean {
+  return /\bnegative\b|\bbearish\b|\bshort[-\s]?(heavy|pressure|bias|positioning)\b/i.test(text);
+}
+
 function derivativeText(output: OverviewOutput): string {
   return `${output.derivatives.funding} ${output.derivatives.oi} ${output.derivatives.positioning}`;
 }
@@ -140,14 +144,15 @@ export function buildDerivativesPresentation(output: OverviewOutput): Derivative
   const oiText = output.derivatives.oi.toLowerCase();
   const positioningText = output.derivatives.positioning.toLowerCase();
   const isMixed = derivativesMeta.verificationStatus === 'ambiguous' || containsAny(allText, ['mixed', 'conflict', 'diverg']);
-  const isStress = containsAny(allText, ['liquidation', 'stress', 'extreme', 'crowded']);
+  const isStress = containsAny(allText, ['liquidation', 'stress', 'extreme', 'heavy', 'crowded']);
   const oiRising = containsAny(oiText, ['rising', 'increase', 'building', 'bullish']);
   const oiFalling = containsAny(oiText, ['falling', 'decreas', 'declin', 'bearish']);
   const fundingPositive = containsAny(fundingText, ['positive', 'elevated', 'bullish']);
-  const fundingNegative = containsAny(fundingText, ['negative', 'short', 'bearish']);
+  const fundingNegative = hasFundingNegativeSignal(fundingText);
   const fundingNeutral = fundingText.includes('neutral');
   const oiNeutral = oiText.includes('neutral') || oiText.includes('stable');
   const positioningNeutral = containsAny(positioningText, ['neutral', 'balanced', 'no venue-confirmed stress']);
+  const positioningMarker = marketMarker(output.derivatives.positioning);
 
   if (derivativesMeta.sourceScope === 'single_venue') {
     return { marker: '⚪', header: 'source-scoped' };
@@ -168,13 +173,18 @@ export function buildDerivativesPresentation(output: OverviewOutput): Derivative
     return { marker: marketMarker(output.derivatives.positioning), header: 'cross-venue derivatives' };
   }
 
+  if (positioningMarker !== '⚪') return { marker: positioningMarker, header: 'positioning' };
   if (positioningNeutral || fundingNeutral || oiNeutral) return { marker: '⚪', header: 'neutral' };
-  return { marker: marketMarker(output.derivatives.positioning), header: 'positioning' };
+  return { marker: positioningMarker, header: 'positioning' };
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function coverageFraction(summary: string | undefined, label: string): { available: number; required: number } | undefined {
   if (summary === undefined) return undefined;
-  const match = summary.match(new RegExp(`${label}\\s+(\\d+)\\/(\\d+)`, 'i'));
+  const match = summary.match(new RegExp(`${escapeRegExp(label)}\\s+(\\d+)\\/(\\d+)`, 'i'));
   if (match === null) return undefined;
   const available = Number(match[1]);
   const required = Number(match[2]);
@@ -206,6 +216,8 @@ function hasEthConflict(output: OverviewOutput): boolean {
 }
 
 function hasBtcAltsDivergence(output: OverviewOutput): boolean {
+  const altsMeta = output.alts as AltsMeta;
+  if (altsMeta.sourceScope !== 'broad_alt_perp_tape' || altsMeta.canRenderBroadLabel === false) return false;
   const alts = buildAltsPresentation(output);
   const btcWeak = containsAny(`${output.btc.structure} ${output.btc.summary} ${output.btc.position} ${output.marketRegime}`, ['bear', 'defensive', 'weak', 'breakdown']);
   return btcWeak && alts.header === 'broad rotation';
@@ -213,13 +225,10 @@ function hasBtcAltsDivergence(output: OverviewOutput): boolean {
 
 export function formatConfidenceReason(output: OverviewOutput): string | undefined {
   const outputMeta = output as OutputWithPresentation;
+  const firstReason = output.confidenceBreakdown?.reasons[0];
   const priceCoverage = coverageFraction(outputMeta.coverage?.summary, 'Core price');
   if (priceCoverage !== undefined && priceCoverage.available < priceCoverage.required) {
     return 'Core price coverage is incomplete, so confidence is capped.';
-  }
-
-  if (containsAny(`${output.marketRegime} ${output.btc.structure} ${output.btc.summary}`, ['range-bound', 'range bound', 'range_compression', 'defensive_range_bound'])) {
-    return 'BTC structure is range-bound, so confidence remains medium.';
   }
 
   const derivativesMeta = output.derivatives as DerivativesMeta;
@@ -229,7 +238,7 @@ export function formatConfidenceReason(output: OverviewOutput): string | undefin
   }
   if (derivativesMeta.sourceScope === 'cross_venue' && derivativesMeta.verificationStatus !== 'confirmed_cross_venue') {
     if (derivativesPresentation.header === 'mixed derivatives') {
-      return 'Funding confirms across venues, but OI trend is mixed/incomplete.';
+      return 'Derivatives venues disagree; OI trend is mixed/incomplete.';
     }
     return 'OI trend coverage is incomplete, so high confidence is capped.';
   }
@@ -254,7 +263,11 @@ export function formatConfidenceReason(output: OverviewOutput): string | undefin
     return 'Core price and derivatives confirm across venues.';
   }
 
-  return output.confidenceBreakdown?.reasons[0];
+  if (containsAny(`${output.marketRegime} ${output.btc.structure} ${output.btc.summary}`, ['range-bound', 'range bound', 'range_compression', 'defensive_range_bound']) && firstReason === undefined) {
+    return 'BTC structure is range-bound, so confidence remains medium.';
+  }
+
+  return firstReason;
 }
 
 export function formatDerivativesOi(oi: string): string {

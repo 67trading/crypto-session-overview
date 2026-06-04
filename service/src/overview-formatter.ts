@@ -538,7 +538,7 @@ export class OverviewFormatter {
       `Scope: ${labels.alts.scope}`,
     ];
     const derivativesSuffix = derivativesMeta.sourceScope === 'single_venue'
-      ? ' · Bybit-scoped'
+      ? ' · source-scoped'
       : '';
     const derivativesBullets = [
       `Funding: ${compactComplete(output.derivatives.funding, 52)}${derivativesSuffix}`,

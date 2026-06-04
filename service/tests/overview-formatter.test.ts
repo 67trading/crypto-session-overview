@@ -517,7 +517,8 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).not.toContain('tracked basket rotation');
     expect(html).not.toContain('Rotation: broad rotation');
     expect(html).toContain('📊 Derivs · ⚪ source-scoped');
-    expect(html).toContain('Funding: neutral across BTC/ETH · Bybit-scoped');
+    expect(html).toContain('Funding: neutral across BTC/ETH · source-scoped');
+    expect(html).not.toContain('Bybit-scoped');
     expect(html).toContain('Options ref: <code>75,000 max pain · Deribit · front expiry 07JUN26</code>');
     expect(html).toContain('trading ends <code>2026-06-10 08:00 UTC</code>');
     expect(html).toContain('Reclaim: Above 68,806.95 -&gt; relief attempt.');

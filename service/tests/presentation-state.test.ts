@@ -162,6 +162,38 @@ describe('presentation-state derivatives matrix', () => {
       derivatives: { sourceScope: 'single_venue', verificationStatus: 'confirmed_single_source' },
     })).header).toBe('source-scoped');
   });
+
+  it('keeps confirmed long-heavy positioning at stress marker priority', () => {
+    expect(buildDerivativesPresentation(makeOutput({
+      derivatives: {
+        funding: 'positive elevated on 3/3 venues',
+        oi: 'rising on 3/3 venues',
+        positioning: 'long-heavy',
+      },
+    }))).toEqual({ marker: '⚫', header: 'cross-venue stress' });
+  });
+
+  it('preserves directional positioning when source scope is absent', () => {
+    expect(buildDerivativesPresentation(makeOutput({
+      derivatives: {
+        sourceScope: undefined,
+        verificationStatus: undefined,
+        funding: 'neutral on 3/3 venues',
+        oi: 'rising',
+        positioning: 'long-heavy',
+      },
+    }))).toEqual({ marker: '⚫', header: 'positioning' });
+  });
+
+  it('does not treat short-term qualifiers as negative funding', () => {
+    expect(buildDerivativesPresentation(makeOutput({
+      derivatives: {
+        funding: 'neutral on 3/3 venues with short-term elevated spread',
+        oi: 'rising on 3/3 venues',
+        positioning: 'balanced cross-venue',
+      },
+    })).header).not.toBe('short pressure building');
+  });
 });
 
 describe('presentation-state confidence matrix', () => {
@@ -179,7 +211,7 @@ describe('presentation-state confidence matrix', () => {
         positioning: 'mixed cross-venue',
         verificationStatus: 'ambiguous',
       },
-    }))).toBe('Funding confirms across venues, but OI trend is mixed/incomplete.');
+    }))).toBe('Derivatives venues disagree; OI trend is mixed/incomplete.');
   });
 
   it('explains event timing, options scope, ETH conflict and full confirmation', () => {
@@ -199,6 +231,49 @@ describe('presentation-state confidence matrix', () => {
       briefConfidence: 'high',
       coverage: { summary: 'Core price 3/3 · Funding 3/3 · OI 3/3' },
     }))).toBe('Core price and derivatives confirm across venues.');
+  });
+
+  it('does not emit broad-alt divergence reason outside broad alt perp tape scope', () => {
+    expect(formatConfidenceReason(makeOutput({
+      btc: { structure: 'bearish', summary: 'BTC is defensive.', position: 'below daily midpoint' },
+      marketRegime: 'risk_off',
+      alts: {
+        rotationState: 'broad_rotation',
+        breadth: '83% of top assets positive on 24h',
+        sourceScope: 'market_wide_top_n',
+      },
+      confidenceBreakdown: { signalClarity: 0.8, dataCoverage: 0.8, venueAgreement: 0.8, ambiguityPenalty: 0, finalScore: 0.8, label: 'medium', reasons: ['Specific model reason.'] },
+    }))).toBe('Specific model reason.');
+  });
+
+  it('keeps specific confirmed cross-venue confidence reason ahead of generic range-bound wording', () => {
+    expect(formatConfidenceReason(makeOutput({
+      marketRegime: 'range_compression',
+      btc: { structure: 'range', summary: 'BTC is range-bound.', position: 'inside range' },
+      derivatives: {
+        sourceScope: 'cross_venue',
+        verificationStatus: 'confirmed_cross_venue',
+        funding: 'negative funding on 3/3 venues',
+        oi: 'rising on 3/3 venues',
+        positioning: 'short pressure building',
+      },
+      confidenceBreakdown: {
+        signalClarity: 0.8,
+        dataCoverage: 0.8,
+        venueAgreement: 0.8,
+        ambiguityPenalty: 0,
+        finalScore: 0.8,
+        label: 'medium',
+        reasons: ['Short pressure confirmed on Bybit and Binance; OKX OI declining.'],
+      },
+    }))).toBe('Short pressure confirmed on Bybit and Binance; OKX OI declining.');
+  });
+
+  it('matches literal coverage labels when parsing coverage fractions', () => {
+    expect(formatConfidenceReason(makeOutput({
+      coverage: { summary: 'Core price 3/3 · ETH/BTC 1/3 · Funding 3/3 · OI 3/3' },
+      confidenceBreakdown: { signalClarity: 0.8, dataCoverage: 0.8, venueAgreement: 0.8, ambiguityPenalty: 0, finalScore: 0.8, label: 'medium', reasons: ['fallback'] },
+    }))).toBe('fallback');
   });
 });
 
