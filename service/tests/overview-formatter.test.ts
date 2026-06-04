@@ -521,7 +521,8 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).not.toContain('Bybit-scoped');
     expect(html).toContain('Options ref: <code>75,000 max pain · Deribit · front expiry 07JUN26</code>');
     expect(html).toContain('trading ends <code>2026-06-10 08:00 UTC</code>');
-    expect(html).toContain('Reclaim: Above 68,806.95 -&gt; relief attempt.');
+    expect(html).toContain('Reclaim: Above 68,806.95 → relief attempt.');
+    expect(html).toContain('Chop: 65,412–66,754.8 → range/chop conditions.');
   });
 
   it('uses deterministic BTC header label in Telegram instead of raw structure', () => {
@@ -555,8 +556,8 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).not.toContain('trading inside.');
     expect(html).toContain('Spot: <code>66,700.12</code>');
     expect(html).toContain('Spot: <code>1,877.45</code>');
-    expect(html).toContain('BTC remains inside the 4H range, but below daily and weekly midpoints, leaving pressure.');
-    expect(html).not.toContain('leaving pressure to the downside');
+    expect(html).toContain('BTC remains inside the 4H range, but below daily and weekly midpoints, leaving pressure to the downside.');
+    expect(html).not.toContain('leaving pressure.');
     expect(html).not.toContain('₿ BTC · 🟡 range');
   });
 
@@ -711,9 +712,57 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
 
     expect(html).toContain('<b>Coverage:</b> Core price 3/3 · Funding 3/3 · OI 1/3 · Options Deribit · Events 6 feeds');
     expect(html).toContain('<b>🏦 Flows</b>');
-    expect(html).toContain('BTC ETF flows: -$519.0M daily · sosovalue');
-    expect(html).toContain('ETH ETF flows: -$90.0M daily · sosovalue');
+    expect(html).toContain('BTC ETF flows: -$519.0M daily · SoSoValue');
+    expect(html).toContain('ETH ETF flows: -$90.0M daily · SoSoValue');
     expect(html).toContain('Flow tone: daily outflows');
+  });
+
+  it('keeps live-case Telegram wording complete and humanized', () => {
+    const html = formatter.formatTelegramHtmlCompact(makeOutput({
+      btc: {
+        summary: 'BTC is below key higher-timeframe references while trading near support, keeping the session defensive.',
+        keyLevels: ['78089.9 (previous week high)', '73106.6 (4H last swing high)'],
+        position: 'Below daily midpoint and below weekly midpoint.',
+        structure: 'bearish',
+        headerLabel: 'bearish near support',
+        spotPrice: 63258.4,
+      },
+      derivatives: {
+        summary: 'Mixed.',
+        funding: 'neutral on 3/3 venues',
+        oi: 'bybit neutral, binance bearish, okx unavailable; OI present without change window on OKX',
+        positioning: 'mixed cross-venue derivatives signal',
+        sourceScope: 'cross_venue',
+        verificationStatus: 'ambiguous',
+      },
+      liquidity: {
+        recoveryZone: '64146 (current session open)',
+        immediateUpside: '64770.8 (previous ASIA high)',
+        largerUpsideMagnet: '70000 max pain · Deribit · front_expiry 12JUN26',
+        downsideVulnerability: 'below 61370 (previous ASIA low / 4H support zone)',
+        bullets: [],
+      },
+      flows: {
+        bullets: [
+          'BTC ETF flows: -$396.6M daily · sosovalue',
+          'ETH ETF flows: -$52.9M daily · sosovalue',
+        ],
+      },
+      scenarios: {
+        reclaim: 'Above 65,812.15 -> relief attempt.',
+        rejection: 'Below 64,146 -> pressure remains.',
+        chop: '61,185.89-64,146 -> range/chop conditions.',
+      },
+    }));
+
+    expect(html).toContain('BTC is below key higher-timeframe references while trading near support, keeping the session defensive.');
+    expect(html).not.toContain('keeping the.');
+    expect(html).toContain('OI trend: Bybit neutral, Binance bearish, OKX unavailable; OKX has present OI only, no change window');
+    expect(html).toContain('BTC ETF flows: -$396.6M daily · SoSoValue');
+    expect(html).toContain('Resistance: <code>64,770.8 (Asia session high)</code>');
+    expect(html).toContain('Vulnerability: <code>below 61,370 (Asia session low / 4H support zone)</code>');
+    expect(html).toContain('Reclaim: Above 65,812.15 → relief attempt.');
+    expect(html).toContain('Chop: 61,185.89–64,146 → range/chop conditions.');
   });
 
 });

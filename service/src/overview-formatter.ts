@@ -115,17 +115,38 @@ function compactChangedBullet(text: string, maxChars: number): string {
   return compactSentence(normalized, maxChars);
 }
 
+function titleCaseSessionName(value: string): string {
+  if (value.toUpperCase() === 'US') return 'US';
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
 function humanizeMarketLabel(text: string): string {
   return humanizeNumbers(text)
     .replace(/\bASIA_CRYPTO\b/g, 'Asia')
     .replace(/\bEUROPE_CRYPTO\b/g, 'Europe')
     .replace(/\bUS_CRYPTO\b/g, 'US')
+    .replace(/\bprevious (ASIA|EUROPE|US) high\b/g, (_match, session: string) => `${titleCaseSessionName(session)} session high`)
+    .replace(/\bprevious (ASIA|EUROPE|US) low\b/g, (_match, session: string) => `${titleCaseSessionName(session)} session low`)
     .replace(/\bfront_expiry\b/g, 'front expiry')
     .replace(/\bDaily Open \/ Current Session Open\b/g, 'daily / session open')
     .replace(/\bDaily Open\b/g, 'daily open')
     .replace(/\bCurrent Session Open\b/g, 'session open')
     .replace(/\bsession high\b/gi, 'session high')
     .replace(/\bsession low\b/gi, 'session low');
+}
+
+function humanizeVenueAndSourceLabel(text: string): string {
+  return humanizeMarketLabel(text)
+    .replace(/\bbybit\b/gi, 'Bybit')
+    .replace(/\bbinance\b/gi, 'Binance')
+    .replace(/\bokx\b/gi, 'OKX')
+    .replace(/\bsosovalue\b/gi, 'SoSoValue');
+}
+
+function formatScenarioForTelegram(text: string): string {
+  return humanizeMarketLabel(text)
+    .replace(/\s+->\s+/g, ' → ')
+    .replace(/(\d[\d,.]*)-(\d[\d,.]*)/g, '$1–$2');
 }
 
 function humanizeNumbers(text: string): string {
@@ -523,7 +544,7 @@ export class OverviewFormatter {
     const btcBullets = [
       ...(btcSpot !== undefined ? [`• Spot: ${code(btcSpot)}`] : []),
       `• ${escapeHtml(compactComplete(output.btc.position, 80))}`,
-      `• ${escapeHtml(compactSentence(output.btc.summary, 90))}`,
+      `• ${escapeHtml(humanizeMarketLabel(output.btc.summary))}`,
       ...btcLevels.map((level, index) => `• ${btcLevelLabel(level, index)}: ${level}`),
     ].filter((line) => line.trim() !== '•').slice(0, 5);
     const ethBullets = [
@@ -541,11 +562,11 @@ export class OverviewFormatter {
       ? ' · source-scoped'
       : '';
     const derivativesBullets = [
-      `Funding: ${compactComplete(output.derivatives.funding, 52)}${derivativesSuffix}`,
-      `OI trend: ${compactComplete(formatDerivativesOi(output.derivatives.oi), 92)}${derivativesSuffix}`,
+      `Funding: ${compactComplete(humanizeVenueAndSourceLabel(output.derivatives.funding), 52)}${derivativesSuffix}`,
+      `OI trend: ${compactComplete(humanizeVenueAndSourceLabel(formatDerivativesOi(output.derivatives.oi)), 92)}${derivativesSuffix}`,
       derivativesMeta.sourceScope === 'single_venue'
-        ? `Positioning: ${compactComplete(output.derivatives.positioning, 42)}; broader venues not verified`
-        : `Positioning: ${compactComplete(output.derivatives.positioning, 60)}`,
+        ? `Positioning: ${compactComplete(humanizeVenueAndSourceLabel(output.derivatives.positioning), 42)}; broader venues not verified`
+        : `Positioning: ${compactComplete(humanizeVenueAndSourceLabel(output.derivatives.positioning), 60)}`,
     ];
     const coverageSummary = (output as OverviewOutput & { coverage?: { summary: string } }).coverage?.summary;
     const flowBullets = (output as OverviewOutput & { flows?: { bullets: string[] } }).flows?.bullets ?? [];
@@ -579,7 +600,7 @@ export class OverviewFormatter {
     if (flowBullets.length > 0) {
       lines.push('', b('🏦 Flows'));
       for (const flow of flowBullets.slice(0, 3)) {
-        lines.push(`• ${escapeHtml(compactComplete(flow, 85))}`);
+        lines.push(`• ${escapeHtml(compactComplete(humanizeVenueAndSourceLabel(flow), 85))}`);
       }
     }
 
@@ -600,9 +621,9 @@ export class OverviewFormatter {
       }),
       '',
       b('⚡ Scenarios'),
-      `Reclaim: ${escapeHtml(output.scenarios.reclaim)}`,
-      `Reject: ${escapeHtml(output.scenarios.rejection)}`,
-      `Chop: ${escapeHtml(output.scenarios.chop)}`,
+      `Reclaim: ${escapeHtml(formatScenarioForTelegram(output.scenarios.reclaim))}`,
+      `Reject: ${escapeHtml(formatScenarioForTelegram(output.scenarios.rejection))}`,
+      `Chop: ${escapeHtml(formatScenarioForTelegram(output.scenarios.chop))}`,
       '',
       escapeHtml(COMPACT_FOOTER_NOTE),
     );
