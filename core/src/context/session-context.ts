@@ -31,16 +31,14 @@ export type SessionContext = {
   priceVsPreviousSession?: SessionContinuationRead;
 };
 
-function candleOverlapsBoundary(candle: HtfCandle, boundary: { startMs: number; endMs: number }): boolean {
-  return candle.openTimeMs < boundary.endMs && candle.closeTimeMs > boundary.startMs;
-}
-
 export function extractSessionHighLow(
   session: CryptoSession,
   candles: HtfCandle[],
   boundary: { startMs: number; endMs: number }
 ): SessionHighLow | null {
-  const filtered = candles.filter((c) => candleOverlapsBoundary(c, boundary));
+  const filtered = candles.filter(
+    (c) => c.openTimeMs >= boundary.startMs && c.openTimeMs < boundary.endMs
+  );
   if (filtered.length === 0) return null;
 
   const high = Math.max(...filtered.map((c) => c.high));
@@ -79,9 +77,9 @@ function findCurrentSessionOpen(
   now: Date,
 ): { open?: number; status: 'confirmed' | 'not_started' | 'unavailable' } {
   if (now.getTime() < currentBoundary.startMs) return { status: 'not_started' };
-  const firstCurrentCandle = candles.find((c) => candleOverlapsBoundary(c, currentBoundary));
-  if (firstCurrentCandle === undefined) return { status: 'unavailable' };
-  return { open: firstCurrentCandle.open, status: 'confirmed' };
+  const exactBoundaryCandle = candles.find((c) => c.openTimeMs === currentBoundary.startMs);
+  if (exactBoundaryCandle === undefined) return { status: 'unavailable' };
+  return { open: exactBoundaryCandle.open, status: 'confirmed' };
 }
 
 export function buildSessionContext(params: {

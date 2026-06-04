@@ -37,6 +37,41 @@ describe('buildSessionAwareScenarios()', () => {
     expect(scenarios.chop).toBe('61,185.89–64,146 → range/chop conditions.');
   });
 
+  it('keeps recovery/reclaim aligned when current open is below previous high', () => {
+    const scenarios = buildSessionAwareScenarios({
+      sessionContext: {
+        ...makeContext('ASIA_CRYPTO'),
+        currentSessionOpen: 63_000,
+      },
+      fallbackHtfLevels: undefined,
+      fallback,
+    });
+
+    expect(scenarios.reclaim).toBe('Above 65,812.15 (US session high) → relief attempt.');
+    expect(scenarios.rejection).toBe('Below 63,000 (Asia session open) → pressure remains.');
+  });
+
+  it('sorts chop ranges during gap-down opens below the previous session low', () => {
+    const scenarios = buildSessionAwareScenarios({
+      sessionContext: {
+        ...makeContext('ASIA_CRYPTO'),
+        currentSessionOpen: 59_000,
+        previousSessionHighLow: {
+          session: 'US_CRYPTO',
+          high: 65_812.15,
+          low: 61_000,
+          midpoint: 63_406.08,
+          open: 62_000,
+          close: 64_146,
+        },
+      },
+      fallbackHtfLevels: undefined,
+      fallback,
+    });
+
+    expect(scenarios.chop).toBe('59,000–61,000 → range/chop conditions.');
+  });
+
   it('uses Europe and US labels for their handoff scenarios', () => {
     expect(buildSessionAwareScenarios({
       sessionContext: makeContext('EUROPE_CRYPTO'),

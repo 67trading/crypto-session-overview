@@ -118,10 +118,23 @@ function existingOverviewResult(
 
 function resolveBoundaryDate(options: OverviewRunOptions, runNow: Date): Date {
   if (options.targetSessionDate === undefined) return runNow;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(options.targetSessionDate)) {
+  const match = options.targetSessionDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match === null) {
     throw new Error(`Invalid targetSessionDate: ${options.targetSessionDate}`);
   }
-  return new Date(`${options.targetSessionDate}T00:00:00.000Z`);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    !Number.isFinite(date.getTime())
+    || date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) {
+    throw new Error(`Invalid targetSessionDate: ${options.targetSessionDate}`);
+  }
+  return date;
 }
 
 function compactPreviousBriefText(text: string, maxChars = PREVIOUS_BRIEF_TEXT_LIMIT): string {

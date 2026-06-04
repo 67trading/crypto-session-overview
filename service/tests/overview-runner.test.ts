@@ -184,9 +184,9 @@ describe('OverviewRunner.run()', () => {
 
   it.each([
     ['ASIA_CRYPTO', 'Crypto Asia Brief ·', 'US session high', 'Asia session open', new Date('2026-06-04T01:00:00.000Z')],
-    ['EUROPE_CRYPTO', 'Crypto Europe Brief ·', 'Asia session high', 'Europe session open', new Date('2026-06-04T09:00:00.000Z')],
-    ['US_CRYPTO', 'Crypto US Brief ·', 'Europe session high', 'US session open', new Date('2026-06-04T14:00:00.000Z')],
-  ] as const)('renders session-aware title, levels, and scenarios for %s', async (session, title, previousHighLabel, currentOpenLabel, now) => {
+    ['EUROPE_CRYPTO', 'Crypto Europe Brief ·', 'Asia session high', 'session low', new Date('2026-06-04T09:00:00.000Z')],
+    ['US_CRYPTO', 'Crypto US Brief ·', 'Europe session high', 'session low', new Date('2026-06-04T14:00:00.000Z')],
+  ] as const)('renders session-aware title, levels, and scenarios for %s', async (session, title, previousHighLabel, rejectionLabel, now) => {
     const repo = makeRepo();
     const deps = makeDeps({
       repository: repo,
@@ -213,10 +213,10 @@ describe('OverviewRunner.run()', () => {
 
     expect(result.status).toBe('SUCCESS');
     expect(result.humanReport).toContain(title);
-    expect(result.output?.liquidity.immediateUpside).toContain(previousHighLabel);
-    expect(result.output?.liquidity.recoveryZone).toContain(currentOpenLabel);
+    expect(result.output?.liquidity.recoveryZone).toContain(previousHighLabel);
+    expect(result.output?.liquidity.immediateUpside).toBeUndefined();
     expect(result.output?.scenarios.reclaim).toContain(previousHighLabel);
-    expect(result.output?.scenarios.rejection).toContain(currentOpenLabel);
+    expect(result.output?.scenarios.rejection).toContain(rejectionLabel);
     expect(repo.saveOverview).toHaveBeenCalledWith(expect.objectContaining({
       session,
       outputJson: expect.objectContaining({ session }),
@@ -245,6 +245,15 @@ describe('OverviewRunner.run()', () => {
       sessionWindowStart: new Date('2026-06-04T00:00:00.000Z'),
       sessionWindowEnd: new Date('2026-06-04T08:00:00.000Z'),
     }));
+  });
+
+  it('rejects calendar-invalid targetSessionDate values before building session boundaries', async () => {
+    const runner = new OverviewRunner(makeDeps());
+
+    await expect(runner.run({
+      ...RUN_OPTIONS,
+      targetSessionDate: '2026-13-45',
+    })).rejects.toThrow('Invalid targetSessionDate: 2026-13-45');
   });
 
   it('overrides contradictory LLM BTC presentation with deterministic BTC context', async () => {

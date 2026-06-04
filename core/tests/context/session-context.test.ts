@@ -44,10 +44,25 @@ describe('extractSessionHighLow', () => {
     const result = extractSessionHighLow('ASIA_CRYPTO', candles, boundary);
     expect(result!.midpoint).toBe((125 + 95) / 2);
   });
+
+  it('does not include pre-boundary candles for non-4h-aligned sessions', () => {
+    const result = extractSessionHighLow('EUROPE_CRYPTO', [
+      { openTimeMs: Date.UTC(2026, 5, 4, 4), closeTimeMs: Date.UTC(2026, 5, 4, 8), open: 100, high: 200, low: 50, close: 110, volume: 1 },
+      { openTimeMs: Date.UTC(2026, 5, 4, 8), closeTimeMs: Date.UTC(2026, 5, 4, 12), open: 110, high: 130, low: 105, close: 120, volume: 1 },
+      { openTimeMs: Date.UTC(2026, 5, 4, 12), closeTimeMs: Date.UTC(2026, 5, 4, 16), open: 120, high: 140, low: 115, close: 125, volume: 1 },
+    ], {
+      startMs: Date.UTC(2026, 5, 4, 7),
+      endMs: Date.UTC(2026, 5, 4, 16),
+    });
+
+    expect(result?.high).toBe(140);
+    expect(result?.low).toBe(105);
+    expect(result?.open).toBe(110);
+  });
 });
 
 describe('buildSessionContext', () => {
-  it('uses the first candle overlapping the current boundary as current session open', () => {
+  it('does not use a pre-boundary 4H candle as current session open', () => {
     const currentBoundary = {
       session: 'EUROPE_CRYPTO' as const,
       startMs: Date.UTC(2026, 5, 4, 7),
@@ -79,7 +94,28 @@ describe('buildSessionContext', () => {
       open: 100,
       close: 115,
     }));
-    expect(result.currentSessionOpen).toBe(110);
+    expect(result.currentSessionOpen).toBeUndefined();
+    expect(result.currentSessionOpenStatus).toBe('unavailable');
+  });
+
+  it('uses an exact boundary candle as current session open', () => {
+    const currentBoundary = {
+      session: 'ASIA_CRYPTO' as const,
+      startMs: Date.UTC(2026, 5, 4, 0),
+      endMs: Date.UTC(2026, 5, 4, 8),
+    };
+    const result = buildSessionContext({
+      session: 'ASIA_CRYPTO',
+      currentPrice: 116,
+      fourHourCandles: [
+        { openTimeMs: Date.UTC(2026, 5, 4, 0), closeTimeMs: Date.UTC(2026, 5, 4, 4), open: 111, high: 120, low: 100, close: 115, volume: 1 },
+      ],
+      currentBoundary,
+      previousBoundary: null,
+      now: new Date(Date.UTC(2026, 5, 4, 1)),
+    });
+
+    expect(result.currentSessionOpen).toBe(111);
     expect(result.currentSessionOpenStatus).toBe('confirmed');
   });
 

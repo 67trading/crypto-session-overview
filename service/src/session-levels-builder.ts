@@ -8,6 +8,7 @@ export type SessionLevel = {
 
 export type SessionLevelsPresentation = {
   recovery?: SessionLevel;
+  reclaim?: SessionLevel;
   resistance?: SessionLevel;
   vulnerability?: SessionLevel;
   previousRange?: {
@@ -20,6 +21,29 @@ export type SessionLevelsPresentation = {
 
 function isFiniteNumber(value: number | undefined): value is number {
   return value !== undefined && Number.isFinite(value);
+}
+
+function buildRecoveryLevel(params: {
+  currentOpen: number | undefined;
+  openStatus: SessionContext['currentSessionOpenStatus'];
+  previousHigh: number;
+  currentSessionLabel: string;
+  previousSessionLabel: string;
+}): SessionLevel {
+  if (
+    params.openStatus === 'confirmed'
+    && isFiniteNumber(params.currentOpen)
+    && params.currentOpen > params.previousHigh
+  ) {
+    return {
+      value: params.currentOpen,
+      label: `${params.currentSessionLabel} session open`,
+    };
+  }
+  return {
+    value: params.previousHigh,
+    label: `${params.previousSessionLabel} session high`,
+  };
 }
 
 export function formatSessionLevelValue(value: number): string {
@@ -38,22 +62,25 @@ export function buildSessionLevelsPresentation(
   if (previous === undefined) return undefined;
 
   const display = getSessionDisplay(sessionContext.currentSession);
-  const recovery = isFiniteNumber(sessionContext.currentSessionOpen)
-    ? {
-        value: sessionContext.currentSessionOpen,
-        label: `${display.currentSessionLabel} session open`,
-      }
-    : {
-        value: previous.high,
-        label: `${display.previousSessionLabel} session high`,
-      };
+  const recovery = buildRecoveryLevel({
+    currentOpen: sessionContext.currentSessionOpen,
+    openStatus: sessionContext.currentSessionOpenStatus,
+    previousHigh: previous.high,
+    currentSessionLabel: display.currentSessionLabel,
+    previousSessionLabel: display.previousSessionLabel,
+  });
 
   return {
     recovery,
-    resistance: {
-      value: previous.high,
-      label: `${display.previousSessionLabel} session high`,
-    },
+    reclaim: recovery,
+    ...(recovery.value !== previous.high
+      ? {
+          resistance: {
+            value: previous.high,
+            label: `${display.previousSessionLabel} session high`,
+          },
+        }
+      : {}),
     vulnerability: {
       value: previous.low,
       label: `${display.previousSessionLabel} session low`,
