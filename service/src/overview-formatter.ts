@@ -1,4 +1,4 @@
-import type { OverviewOutput, CryptoSession } from './ports.js';
+import type { OverviewOutput } from './ports.js';
 import {
   btcLevelLabel,
   buildPresentationLabels,
@@ -10,14 +10,8 @@ import {
   formatEventTitleForTelegram,
   marketMarker,
 } from './presentation-state.js';
+import { getSessionDisplay } from './session-display.js';
 
-const SESSION_LABEL: Record<CryptoSession, string> = {
-  ASIA_CRYPTO: 'Asia',
-  EUROPE_CRYPTO: 'Europe',
-  US_CRYPTO: 'US',
-};
-
-const FRANKFURT_TZ = 'Europe/Berlin';
 const TELEGRAM_MESSAGE_LIMIT = 4096;
 const MAX_WHAT_CHANGED = 4;
 const MAX_LIQUIDITY_LINES = 5;
@@ -51,10 +45,10 @@ function toUtcDatetime(utcIso: string): string {
   }).format(date).replace(',', '');
 }
 
-function toFrankfurtHHmm(utcIso: string): string {
+function toLocalHHmm(utcIso: string, timeZone: string): string {
   const date = new Date(utcIso);
   return new Intl.DateTimeFormat('en-GB', {
-    timeZone: FRANKFURT_TZ,
+    timeZone,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -325,13 +319,13 @@ function isInitialRead(output: OverviewOutput): boolean {
 export class OverviewFormatter {
   format(output: OverviewOutput): string {
     const { session } = output;
-    const label = SESSION_LABEL[session];
+    const display = getSessionDisplay(session);
 
     const lines: string[] = [];
 
     // Header
-    lines.push(`Crypto ${label} Brief`);
-    lines.push(`Generated: ${toUtcDatetime(output.generatedAtUtc)} UTC / ${toFrankfurtHHmm(output.generatedAtUtc)} Frankfurt`);
+    lines.push(display.title);
+    lines.push(`Generated: ${toUtcDatetime(output.generatedAtUtc)} UTC / ${toLocalHHmm(output.generatedAtUtc, display.localTimeZone)} ${display.localTimeLabel}`);
     lines.push('');
 
     // Regime + confidence
@@ -442,7 +436,7 @@ export class OverviewFormatter {
   }
 
   formatCompact(output: OverviewOutput): string {
-    const label = SESSION_LABEL[output.session];
+    const display = getSessionDisplay(output.session);
     const regimeDisplay = output.marketRegime.replace(/_/g, ' ');
     const rotationDisplay = formatAltRotation(output);
     const btcLevels = formatLevels(output.btc.keyLevels, 90);
@@ -452,7 +446,7 @@ export class OverviewFormatter {
     );
 
     const lines: string[] = [
-      `Crypto ${label} Brief · ${toUtcDatetime(output.generatedAtUtc)} UTC / ${toFrankfurtHHmm(output.generatedAtUtc)} FFM`,
+      `${display.title} · ${toUtcDatetime(output.generatedAtUtc)} UTC / ${toLocalHHmm(output.generatedAtUtc, display.localTimeZone)} ${display.localTimeLabel}`,
       `Regime: ${regimeDisplay} · Confidence: ${output.briefConfidence}`,
       '',
       '📌 Changed',
@@ -509,7 +503,7 @@ export class OverviewFormatter {
   }
 
   formatTelegramHtmlCompact(output: OverviewOutput): string {
-    const label = SESSION_LABEL[output.session];
+    const display = getSessionDisplay(output.session);
     const regimeDisplay = formatRegimeForTelegram(output);
     const regimeMarker = marketMarker(output.marketRegime);
     const btcHeader = output.btc.headerLabel ?? output.btc.structure;
@@ -574,7 +568,7 @@ export class OverviewFormatter {
     const liquidityLines = compactHtmlLiquidityLines(output);
 
     const lines: string[] = [
-      `${b(`Crypto ${label} Brief`)} · ${escapeHtml(toUtcDatetime(output.generatedAtUtc))} UTC / ${escapeHtml(toFrankfurtHHmm(output.generatedAtUtc))} FFM`,
+      `${b(display.title)} · ${escapeHtml(toUtcDatetime(output.generatedAtUtc))} UTC / ${escapeHtml(toLocalHHmm(output.generatedAtUtc, display.localTimeZone))} ${escapeHtml(display.localTimeLabel)}`,
       '',
       `${b('Regime:')} ${regimeMarker} ${escapeHtml(regimeDisplay)}`,
       `${b('Confidence:')} ${confidenceMarker(output.briefConfidence)} ${escapeHtml(output.briefConfidence)}`,
