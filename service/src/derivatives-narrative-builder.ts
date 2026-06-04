@@ -79,7 +79,7 @@ export function buildDerivativesNarrative(
       funding: fundingLabel,
       oi: oiWithCoverageNote,
       positioning: consensus.combinedLabel === 'mixed'
-        ? 'mixed cross-venue derivatives signal'
+        ? 'mixed/incomplete cross-venue derivatives read'
         : 'no venue-confirmed stress signal',
       sourceScope: consensus.funding.verificationStatus === 'confirmed_cross_venue' || consensus.openInterest.verificationStatus === 'confirmed_cross_venue'
         ? 'cross_venue'

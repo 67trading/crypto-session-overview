@@ -63,7 +63,9 @@ describe('computeWhatChanged()', () => {
     const prev = makeOutput({ alts: { ...makeOutput().alts, rotationState: 'selective_rotation' } });
     const curr = makeOutput({ alts: { ...makeOutput().alts, rotationState: 'no_rotation' } });
     const result = computeWhatChanged(prev, curr);
-    expect(result).toContain('Alt rotation: selective rotation → no rotation');
+    expect(result).toContain('Alts breadth: selective rotation → broad perp weakness');
+    expect(result.join(' ')).not.toContain('no rotation');
+    expect(result.join(' ')).not.toContain('Alt rotation');
   });
 
   it('detects new upcoming event', () => {

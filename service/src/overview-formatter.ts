@@ -306,6 +306,11 @@ function formatEthUsd24hLabel(output: OverviewOutput): string {
   return label === 'strong' || label === 'weak' || label === 'neutral' ? label : 'not shown';
 }
 
+function ethLevelLabel(level: string, index: number): string {
+  if (index === 0 && /\b(previous week|weekly|previous month|monthly|HTF)\b/i.test(level)) return 'Major recovery/ref';
+  return 'Resistance/ref';
+}
+
 function formatSpotPrice(value: number | undefined): string | undefined {
   if (value === undefined || !Number.isFinite(value)) return undefined;
   return Number(value.toFixed(2)).toLocaleString('en-US', { maximumFractionDigits: 2 });
@@ -545,7 +550,7 @@ export class OverviewFormatter {
       ...(ethSpot !== undefined ? [`• Spot: ${code(ethSpot)}`] : []),
       `• ${escapeHtml(compactComplete(output.eth.vsbtc, 90))}`,
       `• ETH/USD 24h: ${escapeHtml(formatEthUsd24hLabel(output))}`,
-      ...ethLevels.map((level) => `• Ref: ${level}`),
+      ...ethLevels.map((level, index) => `• ${ethLevelLabel(level, index)}: ${level}`),
       `• ${escapeHtml(compactSentence(output.eth.summary, 80))}`,
     ].filter((line) => line.trim() !== '•').slice(0, 4);
     const altsBullets = [

@@ -558,7 +558,7 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
       eth: {
         summary: 'ETH context limited.',
         vsbtc: 'ETH/BTC rising — ETH gaining vs BTC (+3.0% over 7d)',
-        keyLevels: ['2142'],
+        keyLevels: ['2142.44 (previous week high)'],
         headerLabel: 'ETH/BTC 7d resilience',
         ethUsd24hLabel: 'neutral',
         spotPrice: 1877.45,
@@ -572,6 +572,8 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).not.toContain('trading inside.');
     expect(html).toContain('Spot: <code>66,700.12</code>');
     expect(html).toContain('Spot: <code>1,877.45</code>');
+    expect(html).toContain('Major recovery/ref: <code>2142.44 (previous week high)</code>');
+    expect(html).not.toContain('Ref: <code>2142.44 (previous week high)</code>');
     expect(html).toContain('BTC remains inside the 4H range, but below daily and weekly midpoints, leaving pressure to the downside.');
     expect(html).not.toContain('leaving pressure.');
     expect(html).not.toContain('₿ BTC · 🟡 range');
@@ -747,7 +749,7 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
         summary: 'Mixed.',
         funding: 'neutral on 3/3 venues',
         oi: 'bybit neutral, binance bearish, okx unavailable; OI present without change window on OKX',
-        positioning: 'mixed cross-venue derivatives signal',
+        positioning: 'mixed/incomplete cross-venue derivatives read',
         sourceScope: 'cross_venue',
         verificationStatus: 'ambiguous',
       },
@@ -774,6 +776,8 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).toContain('BTC is below key higher-timeframe references while trading near support, keeping the session defensive.');
     expect(html).not.toContain('keeping the.');
     expect(html).toContain('OI trend: Bybit neutral, Binance bearish, OKX unavailable; OKX has present OI only, no change window');
+    expect(html).toContain('Positioning: mixed/incomplete cross-venue derivatives read');
+    expect(html).not.toContain('mixed cross-venue derivatives signal');
     expect(html).toContain('BTC ETF flows: -$396.6M daily · SoSoValue');
     expect(html).toContain('Resistance: <code>64,770.8 (Asia session high)</code>');
     expect(html).toContain('Vulnerability: <code>below 61,370 (Asia session low / 4H support zone)</code>');
