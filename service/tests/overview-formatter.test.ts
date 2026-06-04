@@ -419,8 +419,8 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).toContain('<b>Regime:</b> ⚫ Defensive breakdown near support');
     expect(html).not.toContain('<b>Sources:</b>');
     expect(html).not.toContain('Liq clusters');
-    expect(html).toContain('Recovery/ref: <code>71407.5-71413.9 &lt;recovery&gt;</code>');
-    expect(html).toContain('Resistance/ref: <code>74495.8 &amp; resistance</code>');
+    expect(html).toContain('Recovery/ref: <code>71,407.5-71,413.9 &lt;recovery&gt;</code>');
+    expect(html).toContain('Resistance/ref: <code>74,495.8 &amp; resistance</code>');
     expect(html).toContain('🔴 FOMC &lt;Minutes&gt; &amp; press event');
     expect(html).not.toContain('HYPE Token Splash');
     expect(html).toContain('Context only. No entries/exits/sizing/leverage.');
@@ -518,7 +518,7 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).not.toContain('Rotation: broad rotation');
     expect(html).toContain('📊 Derivs · ⚪ Bybit-scoped neutral');
     expect(html).toContain('Funding: neutral across BTC/ETH · Bybit-scoped');
-    expect(html).toContain('Options ref: <code>75000 max pain · Deribit · front expiry 07JUN26</code>');
+    expect(html).toContain('Options ref: <code>75,000 max pain · Deribit · front expiry 07JUN26</code>');
     expect(html).toContain('trading ends <code>2026-06-10 08:00 UTC</code>');
     expect(html).toContain('Reclaim: Above 68,806.95 -&gt; relief attempt.');
   });
@@ -548,6 +548,7 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     }));
 
     expect(html).toContain('₿ BTC · 🔴 bearish range pressure');
+    expect(html).toContain('Major recovery/ref: <code>78,089.9 (previous week high)</code>');
     expect(html).toContain('Confidence: high → medium');
     expect(html).toContain('BTC position changed.');
     expect(html).not.toContain('trading inside.');
@@ -573,7 +574,7 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     expect(html).toContain('ETH/USD 24h: not shown');
   });
 
-  it('renders production broad alt perp tape scope', () => {
+  it('renders production broad alt perp tape scope from breadth thresholds', () => {
     const html = formatter.formatTelegramHtmlCompact(makeOutput({
       alts: {
         summary: 'Broad alt perps are positive.',
@@ -585,7 +586,7 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
       },
     }));
 
-    expect(html).toContain('🌊 Alts · ⚪ broad perp rotation');
+    expect(html).toContain('🌊 Alts · ⚪ selective rotation');
     expect(html).toContain('Breadth: 61% of 74 liquid alt perps positive on 24h');
     expect(html).toContain('Scope: Bybit/Binance/OKX liquid USDT perp tape');
     expect(html).not.toContain('tracked basket');
@@ -603,9 +604,31 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
       },
     }));
 
-    expect(html).toContain('🌊 Alts · 🟡 broad perp breadth mixed');
+    expect(html).toContain('🌊 Alts · 🟡 mixed');
     expect(html).toContain('Breadth: 53% of 74 liquid alt perps positive on 24h');
     expect(html).not.toContain('Rotation: broad rotation');
+  });
+
+  it('renders broad alt perp tape markers from breadth bands', () => {
+    expect(formatter.formatTelegramHtmlCompact(makeOutput({
+      alts: {
+        summary: 'Weak.',
+        rotationState: 'no_rotation',
+        breadth: '9% of 57 liquid alt perps positive on 24h',
+        sourceScope: 'broad_alt_perp_tape',
+        canRenderBroadLabel: true,
+      },
+    }))).toContain('🌊 Alts · 🔴 broad perp weakness');
+
+    expect(formatter.formatTelegramHtmlCompact(makeOutput({
+      alts: {
+        summary: 'Broad.',
+        rotationState: 'broad_rotation',
+        breadth: '68% of 57 liquid alt perps positive on 24h',
+        sourceScope: 'broad_alt_perp_tape',
+        canRenderBroadLabel: true,
+      },
+    }))).toContain('🌊 Alts · 🟢 broad rotation');
   });
 
   it('renders cross-venue derivatives as funding-confirmed when OI trend coverage is incomplete', () => {
@@ -631,10 +654,44 @@ describe('OverviewFormatter.formatTelegramHtmlCompact()', () => {
     }));
 
     expect(html).toContain('<b>Reason:</b> OI trend coverage is incomplete, so high confidence is capped.');
-    expect(html).toContain('📊 Derivs · ⚫ funding confirmed, OI incomplete');
+    expect(html).toContain('📊 Derivs · 🟡 funding confirmed, OI incomplete');
     expect(html).toContain('Funding: neutral on 3/3 venues');
     expect(html).toContain('OI trend: neutral on 1/3 venues; OKX has present OI only, no change window');
     expect(html).not.toContain('coverage-scoped');
+  });
+
+  it('polishes listing and delisting event display for Telegram', () => {
+    const listingHtml = formatter.formatTelegramHtmlCompact(makeOutput({
+      events: {
+        summary: 'Listing.',
+        upcoming: [{
+          title: 'New listing: NOWUSDT Perpetual Contract, with up to 10x leverage',
+          time: '2026-06-04T09:19:41.000Z',
+          importance: 'high',
+          displayTimeType: 'publishedAt',
+          detail: 'Effective time not parsed.',
+        }],
+      },
+    }));
+
+    expect(listingHtml).toContain('New listing: NOWUSDT Perpetual Contract · announced <code>2026-06-04 09:19 UTC</code>');
+    expect(listingHtml).not.toContain('up to 10x leverage');
+    expect(listingHtml).toContain('Trading start/effective time not parsed.');
+
+    const delistingHtml = formatter.formatTelegramHtmlCompact(makeOutput({
+      events: {
+        summary: 'Delisting.',
+        upcoming: [{
+          title: 'Delisting of ELON and VINU',
+          time: '2026-06-03T08:00:01.000Z',
+          importance: 'high',
+          displayTimeType: 'publishedAt',
+          detail: 'Effective time not parsed.',
+        }],
+      },
+    }));
+
+    expect(delistingHtml).toContain('Trading-end/effective time not parsed.');
   });
 
   it('renders coverage and real ETF flow context when present', () => {

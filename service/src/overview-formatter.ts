@@ -105,7 +105,7 @@ function compactChangedBullet(text: string, maxChars: number): string {
 }
 
 function humanizeMarketLabel(text: string): string {
-  return text
+  return humanizeNumbers(text)
     .replace(/\bASIA_CRYPTO\b/g, 'Asia')
     .replace(/\bEUROPE_CRYPTO\b/g, 'Europe')
     .replace(/\bUS_CRYPTO\b/g, 'US')
@@ -115,6 +115,14 @@ function humanizeMarketLabel(text: string): string {
     .replace(/\bCurrent Session Open\b/g, 'session open')
     .replace(/\bsession high\b/gi, 'session high')
     .replace(/\bsession low\b/gi, 'session low');
+}
+
+function humanizeNumbers(text: string): string {
+  return text.replace(/\b\d{5,}(?:\.\d+)?\b/g, (raw) => {
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return raw;
+    return Number(value.toFixed(2)).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  });
 }
 
 function toUtcCompact(utcIso: string): string {
@@ -201,7 +209,7 @@ function formatLevels(levels: string[], maxChars: number): string | undefined {
 }
 
 function formatHtmlLevels(levels: string[], maxItems: number): string[] {
-  return levels.slice(0, maxItems).map((level) => code(compactComplete(level, 70)));
+  return levels.slice(0, maxItems).map((level) => code(compactComplete(humanizeNumbers(level), 70)));
 }
 
 function compactLiquidityLines(output: OverviewOutput): string[] {
@@ -230,7 +238,7 @@ function compactLiquidityLines(output: OverviewOutput): string[] {
 
 function compactHtmlLiquidityLines(output: OverviewOutput): { label: string; value: string }[] {
   const candidates = [
-    output.liquidity.recoveryZone !== undefined ? { label: 'Recovery', value: output.liquidity.recoveryZone } : undefined,
+    output.liquidity.recoveryZone !== undefined ? { label: 'Session recovery', value: output.liquidity.recoveryZone } : undefined,
     output.liquidity.immediateUpside !== undefined ? { label: 'Resistance', value: output.liquidity.immediateUpside } : undefined,
     output.liquidity.largerUpsideMagnet !== undefined ? { label: 'Options ref', value: output.liquidity.largerUpsideMagnet } : undefined,
     output.liquidity.downsideVulnerability !== undefined ? { label: 'Vulnerability', value: output.liquidity.downsideVulnerability } : undefined,
@@ -268,6 +276,41 @@ function marketMarker(value: string): string {
   return '⚪';
 }
 
+function parseBreadthPercent(text: string): number | undefined {
+  const match = text.match(/(\d+(?:\.\d+)?)%/);
+  if (match === null) return undefined;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function formatBroadAltPerpRotation(output: OverviewOutput): string {
+  const pct = parseBreadthPercent(output.alts.breadth);
+  if (pct === undefined) {
+    if (output.alts.rotationState === 'broad_rotation') return 'broad rotation';
+    if (output.alts.rotationState === 'selective_rotation') return 'mixed';
+    if (output.alts.rotationState === 'weak' || output.alts.rotationState === 'no_rotation') return 'broad perp weakness';
+    return output.alts.rotationState.replace(/_/g, ' ');
+  }
+  if (pct <= 25) return 'broad perp weakness';
+  if (pct < 45) return 'weak/mixed';
+  if (pct < 60) return 'mixed';
+  if (pct < 65) return 'selective rotation';
+  return 'broad rotation';
+}
+
+function altMarker(output: OverviewOutput): string {
+  const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string; canRenderBroadLabel?: boolean };
+  if (altsMeta.sourceScope !== 'broad_alt_perp_tape' || altsMeta.canRenderBroadLabel === false || output.alts.rotationState === 'unknown') {
+    return marketMarker(`${output.alts.rotationState} ${output.alts.breadth}`);
+  }
+  const pct = parseBreadthPercent(output.alts.breadth);
+  if (pct === undefined) return marketMarker(`${output.alts.rotationState} ${output.alts.breadth}`);
+  if (pct <= 25) return '🔴';
+  if (pct < 60) return '🟡';
+  if (pct < 65) return '⚪';
+  return '🟢';
+}
+
 function formatRegimeForTelegram(output: OverviewOutput): string {
   if (output.marketRegime === 'short_heavy_near_support' && !output.derivatives.positioning.toLowerCase().includes('short')) {
     return 'Defensive breakdown near support';
@@ -279,10 +322,7 @@ function formatAltRotation(output: OverviewOutput): string {
   const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string };
   if (altsMeta.sourceScope === 'broad_alt_perp_tape') {
     if ((altsMeta as { canRenderBroadLabel?: boolean }).canRenderBroadLabel === false || output.alts.rotationState === 'unknown') return 'unavailable';
-    if (output.alts.rotationState === 'broad_rotation') return 'broad perp rotation';
-    if (output.alts.rotationState === 'selective_rotation') return 'broad perp breadth mixed';
-    if (output.alts.rotationState === 'weak') return 'broad perp weakness';
-    if (output.alts.rotationState === 'no_rotation') return 'weak perp tape';
+    return formatBroadAltPerpRotation(output);
   }
   if (altsMeta.sourceScope === 'tracked_basket') {
     return 'unavailable';
@@ -344,6 +384,42 @@ function formatDerivativesOi(oi: string): string {
 function formatEventDetail(detail: string): string {
   if (detail === 'Effective time not parsed.') return 'Effective/trading-end time not parsed.';
   return detail;
+}
+
+function isListingEvent(title: string): boolean {
+  return /\b(listing|list|launch)\b/i.test(title) && !/\bdelist/i.test(title);
+}
+
+function isDelistingEvent(title: string): boolean {
+  return /\bdelist/i.test(title);
+}
+
+function formatEventDetailForTitle(detail: string, title: string): string {
+  if (detail === 'Effective time not parsed.') {
+    if (isDelistingEvent(title)) return 'Trading-end/effective time not parsed.';
+    if (isListingEvent(title)) return 'Trading start/effective time not parsed.';
+  }
+  return formatEventDetail(detail);
+}
+
+function formatEventTitleForTelegram(title: string): string {
+  return title
+    .replace(/,\s*with up to \d+x leverage\b/ig, '')
+    .replace(/\s+with up to \d+x leverage\b/ig, '')
+    .replace(/\s+-\s+up to \d+x leverage\b/ig, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function btcLevelLabel(level: string, index: number): string {
+  if (index === 0 && /\b(previous week|weekly|previous month|monthly|HTF)\b/i.test(level)) return 'Major recovery/ref';
+  return index === 0 ? 'Recovery/ref' : 'Resistance/ref';
+}
+
+function formatDerivativesMarker(output: OverviewOutput): string {
+  const derivativesMeta = output.derivatives as OverviewOutput['derivatives'] & { sourceScope?: string; verificationStatus?: string };
+  if (derivativesMeta.sourceScope === 'cross_venue' && derivativesMeta.verificationStatus !== 'confirmed_cross_venue') return '🟡';
+  return marketMarker(output.derivatives.positioning);
 }
 
 function isInitialRead(output: OverviewOutput): boolean {
@@ -546,9 +622,9 @@ export class OverviewFormatter {
     const ethMeta = output.eth as OverviewOutput['eth'] & { headerLabel?: string; ethUsd24hLabel?: string };
     const ethHeader = ethMeta.headerLabel ?? 'ETH context';
     const ethMarker = marketMarker(`${output.eth.vsbtc} ${ethHeader}`);
-    const altsMarker = marketMarker(`${output.alts.rotationState} ${output.alts.breadth}`);
+    const altsMarker = altMarker(output);
     const derivativesMeta = output.derivatives as OverviewOutput['derivatives'] & { sourceScope?: string; verificationStatus?: string };
-    const derivativesMarker = marketMarker(output.derivatives.positioning);
+    const derivativesMarker = formatDerivativesMarker(output);
     const rotationDisplay = formatAltRotation(output);
     const altsMeta = output.alts as OverviewOutput['alts'] & { sourceScope?: string };
     const altsHeader = altsMeta.sourceScope === 'broad_alt_perp_tape' && (altsMeta as { canRenderBroadLabel?: boolean }).canRenderBroadLabel !== false && output.alts.rotationState !== 'unknown'
@@ -574,7 +650,7 @@ export class OverviewFormatter {
     );
     const eventLines = highImpactEvents.length > 0
       ? highImpactEvents.slice(0, 3).map((ev) =>
-          `${eventMarker(ev.importance)} ${escapeHtml(compactComplete(ev.title, 80))} · ${escapeHtml(eventTimePrefix((ev as { displayTimeType?: string }).displayTimeType))}${eventTimePrefix((ev as { displayTimeType?: string }).displayTimeType) === '' ? '' : ' '}${code(toUtcCompact(ev.time))}`
+          `${eventMarker(ev.importance)} ${escapeHtml(compactComplete(formatEventTitleForTelegram(ev.title), 80))} · ${escapeHtml(eventTimePrefix((ev as { displayTimeType?: string }).displayTimeType))}${eventTimePrefix((ev as { displayTimeType?: string }).displayTimeType) === '' ? '' : ' '}${code(toUtcCompact(ev.time))}`
         )
       : output.events.upcoming.length > 0 || output.events.summary.trim() !== ''
         ? ['🔵 No high-impact BTC/ETH event confirmed']
@@ -587,7 +663,7 @@ export class OverviewFormatter {
       ...(btcSpot !== undefined ? [`• Spot: ${code(btcSpot)}`] : []),
       `• ${escapeHtml(compactComplete(output.btc.position, 80))}`,
       `• ${escapeHtml(compactSentence(output.btc.summary, 90))}`,
-      ...btcLevels.map((level, index) => `• ${index === 0 ? 'Recovery/ref' : 'Resistance/ref'}: ${level}`),
+      ...btcLevels.map((level, index) => `• ${btcLevelLabel(level, index)}: ${level}`),
     ].filter((line) => line.trim() !== '•').slice(0, 5);
     const ethBullets = [
       ...(ethSpot !== undefined ? [`• Spot: ${code(ethSpot)}`] : []),
@@ -659,7 +735,7 @@ export class OverviewFormatter {
       ...eventLines,
       ...highImpactEvents.slice(0, 1).flatMap((ev) => {
         const detail = (ev as { detail?: string }).detail;
-        return detail !== undefined ? [`• ${escapeHtml(compactComplete(formatEventDetail(detail), 85))}`] : [];
+        return detail !== undefined ? [`• ${escapeHtml(compactComplete(formatEventDetailForTitle(detail, ev.title), 85))}`] : [];
       }),
       '',
       b('⚡ Scenarios'),
