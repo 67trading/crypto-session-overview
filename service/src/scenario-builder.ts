@@ -21,13 +21,13 @@ export function buildDeterministicScenarios(
 
   return {
     reclaim: reclaimLevel !== undefined
-      ? `Above ${reclaimLevel} -> relief attempt.`
+      ? `Above ${reclaimLevel} → relief attempt.`
       : fallback.reclaim,
     rejection: rejectLevel !== undefined
-      ? `Below ${rejectLevel} -> pressure remains.`
+      ? `Below ${rejectLevel} → pressure remains.`
       : fallback.rejection,
     chop: chopLow !== undefined && chopHigh !== undefined
-      ? `${chopLow}-${chopHigh} -> range/chop conditions.`
+      ? `${chopLow}–${chopHigh} → range/chop conditions.`
       : fallback.chop,
   };
 }
