@@ -580,6 +580,32 @@ export type CollectorRunFilters = {
   fromDate?: Date;
 };
 
+export type VenueSnapshotRecord = {
+  venue: Exclude<Venue, 'deribit'>;
+  asset: string;
+  metric: 'open_interest';
+  value: number;
+  normalizedUsd?: number;
+  observedAt: Date;
+  source?: string;
+  venueInstrument?: string;
+  rawJson?: unknown;
+};
+
+export type PreviousVenueSnapshotQuery = {
+  venue: Exclude<Venue, 'deribit'>;
+  asset: string;
+  metric: 'open_interest';
+  before: Date;
+  minObservedAt?: Date;
+  maxObservedAt?: Date;
+};
+
+export interface VenueSnapshotRepository {
+  saveVenueSnapshot(snapshot: VenueSnapshotRecord): Promise<void>;
+  getPreviousVenueSnapshot(query: PreviousVenueSnapshotQuery): Promise<VenueSnapshotRecord | null>;
+}
+
 export interface SessionOverviewRepository {
   saveInputSnapshot(session: CryptoSession, input: OverviewInput): Promise<string>;
   saveCollectedEvents(events: NormalizedEvent[]): Promise<void>;

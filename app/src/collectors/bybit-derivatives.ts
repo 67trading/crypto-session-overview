@@ -70,7 +70,7 @@ export class BybitDerivativesCollector implements DerivativesCollector {
 
     const [fundingHistory, oiHistory] = await Promise.all([
       this.client.getFundingRateHistory(perpSymbol, 10),
-      this.client.getOpenInterest(perpSymbol, 'D'),
+      this.client.getOpenInterest(perpSymbol, '1d'),
     ]);
 
     const latestFunding = fundingHistory[0]?.fundingRate ?? 0;

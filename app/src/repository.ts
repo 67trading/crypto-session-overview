@@ -12,6 +12,8 @@ import type {
   LlmUsageRecord,
   EventFilters,
   CollectorRunFilters,
+  VenueSnapshotRecord,
+  PreviousVenueSnapshotQuery,
 } from '../../service/src/ports.js';
 
 export class PrismaSessionOverviewRepository implements SessionOverviewRepository {
@@ -70,6 +72,65 @@ export class PrismaSessionOverviewRepository implements SessionOverviewRepositor
         ...(run.payloadHash !== undefined ? { payloadHash: run.payloadHash } : {}),
       },
     });
+  }
+
+  async saveVenueSnapshot(snapshot: VenueSnapshotRecord): Promise<void> {
+    await this.prisma.venueSnapshot.upsert({
+      where: {
+        venue_asset_metric_observedAt: {
+          venue: snapshot.venue,
+          asset: snapshot.asset,
+          metric: snapshot.metric,
+          observedAt: snapshot.observedAt,
+        },
+      },
+      update: {
+        value: snapshot.value,
+        ...(snapshot.normalizedUsd !== undefined ? { normalizedUsd: snapshot.normalizedUsd } : {}),
+        ...(snapshot.source !== undefined ? { source: snapshot.source } : {}),
+        ...(snapshot.venueInstrument !== undefined ? { venueInstrument: snapshot.venueInstrument } : {}),
+        ...(snapshot.rawJson !== undefined ? { rawJson: JSON.stringify(snapshot.rawJson) } : {}),
+      },
+      create: {
+        venue: snapshot.venue,
+        asset: snapshot.asset,
+        metric: snapshot.metric,
+        value: snapshot.value,
+        ...(snapshot.normalizedUsd !== undefined ? { normalizedUsd: snapshot.normalizedUsd } : {}),
+        observedAt: snapshot.observedAt,
+        ...(snapshot.source !== undefined ? { source: snapshot.source } : {}),
+        ...(snapshot.venueInstrument !== undefined ? { venueInstrument: snapshot.venueInstrument } : {}),
+        ...(snapshot.rawJson !== undefined ? { rawJson: JSON.stringify(snapshot.rawJson) } : {}),
+      },
+    });
+  }
+
+  async getPreviousVenueSnapshot(query: PreviousVenueSnapshotQuery): Promise<VenueSnapshotRecord | null> {
+    const row = await this.prisma.venueSnapshot.findFirst({
+      where: {
+        venue: query.venue,
+        asset: query.asset,
+        metric: query.metric,
+        observedAt: {
+          lt: query.before,
+          ...(query.minObservedAt !== undefined ? { gte: query.minObservedAt } : {}),
+          ...(query.maxObservedAt !== undefined ? { lte: query.maxObservedAt } : {}),
+        },
+      },
+      orderBy: { observedAt: 'desc' },
+    });
+    if (row === null) return null;
+    return {
+      venue: row.venue as VenueSnapshotRecord['venue'],
+      asset: row.asset,
+      metric: row.metric as VenueSnapshotRecord['metric'],
+      value: row.value,
+      ...(row.normalizedUsd !== null ? { normalizedUsd: row.normalizedUsd } : {}),
+      observedAt: row.observedAt,
+      ...(row.source !== null ? { source: row.source } : {}),
+      ...(row.venueInstrument !== null ? { venueInstrument: row.venueInstrument } : {}),
+      ...(row.rawJson !== null ? { rawJson: JSON.parse(row.rawJson) as unknown } : {}),
+    };
   }
 
   async saveOverview(record: OverviewRecord): Promise<string> {

@@ -1,10 +1,12 @@
-import type { CollectorResult, ContextCollector, CollectorRunContext, NormalizedVenueSnapshot } from '../../../service/src/ports.js';
+import type { CollectorResult, ContextCollector, CollectorRunContext, NormalizedVenueSnapshot, VenueSnapshotRepository } from '../../../service/src/ports.js';
 import { getInstrumentsFor } from '../../../service/src/market-normalization/instrument-registry.js';
 import { normalizeFundingPer8h } from '../../../service/src/market-normalization/normalize-funding.js';
 import { normalizeOiUsd } from '../../../service/src/market-normalization/normalize-open-interest.js';
 
 const BASE = 'https://www.okx.com';
 const UA = 'trader-agent/session-overview';
+const OI_DELTA_MIN_AGE_MS = 18 * 60 * 60 * 1000;
+const OI_DELTA_MAX_AGE_MS = 30 * 60 * 60 * 1000;
 
 type OkxResponse<T> = { code: string; msg: string; data: T[] };
 type OkxTicker = { last: string; open24h: string; high24h: string; low24h: string };
@@ -22,6 +24,8 @@ async function fetchOkx<T>(url: URL): Promise<T[]> {
 
 export class OkxMarketCollector implements ContextCollector<NormalizedVenueSnapshot[]> {
   readonly sourceName = 'okx-market';
+
+  constructor(private readonly venueSnapshotRepository?: VenueSnapshotRepository) {}
 
   async collect(_ctx: CollectorRunContext): Promise<CollectorResult<NormalizedVenueSnapshot[]>> {
     const instruments = getInstrumentsFor('price').filter((entry) => entry.venues.okx !== undefined);
@@ -41,6 +45,8 @@ export class OkxMarketCollector implements ContextCollector<NormalizedVenueSnaps
       const funding = fundingRows[0];
       const oi = oiRows[0];
       const rawOi = oi !== undefined ? Number(oi.oiCcy ?? oi.oi) : undefined;
+      const rawOiUnit = oi?.oiCcy !== undefined ? 'base' as const : oi?.oiUsd !== undefined ? 'usd' as const : 'contracts' as const;
+      const observedAt = new Date();
       const normalizedFunding = funding !== undefined
         ? normalizeFundingPer8h(Number(funding.fundingRate), 8)
         : undefined;
@@ -52,6 +58,23 @@ export class OkxMarketCollector implements ContextCollector<NormalizedVenueSnaps
       const change24hPct = Number(ticker.open24h) > 0
         ? ((last - Number(ticker.open24h)) / Number(ticker.open24h)) * 100
         : undefined;
+      const oiChange24hPct = rawOi !== undefined
+        ? await this.computeOiChange24hPct({
+            asset: entry.asset,
+            observedAt,
+            rawOi,
+          })
+        : undefined;
+      if (rawOi !== undefined) {
+        await this.saveCurrentOiSnapshot({
+          asset: entry.asset,
+          instId,
+          rawOi,
+          normalizedUsd,
+          observedAt,
+          oi,
+        });
+      }
       return {
         venue: 'okx',
         asset: entry.asset,
@@ -59,7 +82,7 @@ export class OkxMarketCollector implements ContextCollector<NormalizedVenueSnaps
         venueInstrument: instId,
         instrumentType: 'linear_perp',
         quote: 'USDT',
-        observedAt: new Date().toISOString(),
+        observedAt: observedAt.toISOString(),
         ticker24h: {
           last,
           open24h: Number(ticker.open24h),
@@ -86,9 +109,10 @@ export class OkxMarketCollector implements ContextCollector<NormalizedVenueSnaps
         ...(rawOi !== undefined ? {
           openInterest: {
             rawValue: rawOi,
-            rawUnit: oi?.oiUsd !== undefined ? 'usd' as const : 'base' as const,
+            rawUnit: rawOiUnit,
             ...(normalizedUsd !== undefined ? { normalizedUsd } : {}),
-            timeBasis: 'unknown' as const,
+            ...(oiChange24hPct !== undefined ? { change24hPct: oiChange24hPct } : {}),
+            timeBasis: oiChange24hPct !== undefined ? 'rolling_24h' as const : 'unknown' as const,
           },
         } : {}),
         dataQuality: { missingFields: [], stale: false, errors: [] },
@@ -124,6 +148,46 @@ export class OkxMarketCollector implements ContextCollector<NormalizedVenueSnaps
     url.searchParams.set('bar', bar);
     url.searchParams.set('limit', String(limit));
     return fetchOkx<OkxCandle>(url).then((rows) => rows.reverse());
+  }
+
+  private async computeOiChange24hPct(params: {
+    asset: string;
+    observedAt: Date;
+    rawOi: number;
+  }): Promise<number | undefined> {
+    if (this.venueSnapshotRepository === undefined || params.rawOi <= 0) return undefined;
+    const previous = await this.venueSnapshotRepository.getPreviousVenueSnapshot({
+      venue: 'okx',
+      asset: params.asset,
+      metric: 'open_interest',
+      before: params.observedAt,
+      minObservedAt: new Date(params.observedAt.getTime() - OI_DELTA_MAX_AGE_MS),
+      maxObservedAt: new Date(params.observedAt.getTime() - OI_DELTA_MIN_AGE_MS),
+    }).catch(() => null);
+    if (previous === null || previous.value <= 0) return undefined;
+    return ((params.rawOi - previous.value) / previous.value) * 100;
+  }
+
+  private async saveCurrentOiSnapshot(params: {
+    asset: string;
+    instId: string;
+    rawOi: number;
+    normalizedUsd: number | undefined;
+    observedAt: Date;
+    oi: OkxOpenInterest | undefined;
+  }): Promise<void> {
+    if (this.venueSnapshotRepository === undefined) return;
+    await this.venueSnapshotRepository.saveVenueSnapshot({
+      venue: 'okx',
+      asset: params.asset,
+      metric: 'open_interest',
+      value: params.rawOi,
+      ...(params.normalizedUsd !== undefined ? { normalizedUsd: params.normalizedUsd } : {}),
+      observedAt: params.observedAt,
+      source: this.sourceName,
+      venueInstrument: params.instId,
+      rawJson: params.oi,
+    }).catch(() => undefined);
   }
 
   private toCandle(row: OkxCandle, timeframe: '1d' | '1w' | '4h', timeBasis: NonNullable<NormalizedVenueSnapshot['candles']>[number]['timeBasis']): NonNullable<NormalizedVenueSnapshot['candles']>[number] {

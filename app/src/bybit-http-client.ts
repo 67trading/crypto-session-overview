@@ -106,7 +106,7 @@ export class BybitHttpClient {
     }));
   }
 
-  async getOpenInterest(symbol: string, intervalTime: 'D'): Promise<BybitOpenInterest[]> {
+  async getOpenInterest(symbol: string, intervalTime: '1d'): Promise<BybitOpenInterest[]> {
     const url = new URL(`${this.baseUrl}/v5/market/open-interest`);
     url.searchParams.set('category', 'linear');
     url.searchParams.set('symbol', symbol);

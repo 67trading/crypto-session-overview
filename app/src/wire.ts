@@ -84,10 +84,11 @@ export function wire(config: AppConfig, logger: LoggerLike): SessionOverviewServ
   }
 
   // Context collectors — always-on (public), or gated on API keys (FRED, BEA)
+  const repository = new PrismaSessionOverviewRepository(config.database.url);
   const contextCollectors: ContextCollectorEntry[] = [
     contextCollectorEntry(new BybitVenueSnapshotCollector(bybitClient), mergeNormalizedVenueSnapshots),
     contextCollectorEntry(new BinanceMarketCollector(), mergeNormalizedVenueSnapshots),
-    contextCollectorEntry(new OkxMarketCollector(), mergeNormalizedVenueSnapshots),
+    contextCollectorEntry(new OkxMarketCollector(repository), mergeNormalizedVenueSnapshots),
     contextCollectorEntry(new DefiLlamaStablecoinsCollector(), mergeStablecoinContext),
     contextCollectorEntry(new DefiLlamaChainsCollector(), mergeChainFlowContext),
     contextCollectorEntry(new DeribitOptionsCollector(), mergeOptionsContext),
@@ -110,7 +111,6 @@ export function wire(config: AppConfig, logger: LoggerLike): SessionOverviewServ
   }
 
   const llmClient = new GeminiLlmClient(config.gemini.apiKey, config.gemini.model);
-  const repository = new PrismaSessionOverviewRepository(config.database.url);
   const setupLoader = new PrismaActiveSetupsLoader(config.database.url);
 
   const deps: SessionOverviewDeps = {

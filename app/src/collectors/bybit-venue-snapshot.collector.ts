@@ -16,7 +16,7 @@ export class BybitVenueSnapshotCollector implements ContextCollector<NormalizedV
       const [ticker, fundingRows, oiRows, daily, weekly, fourHour] = await Promise.all([
         this.client.getTicker(symbol, 'linear'),
         this.client.getFundingRateHistory(symbol, 1),
-        this.client.getOpenInterest(symbol, 'D'),
+        this.client.getOpenInterest(symbol, '1d'),
         this.client.getKlines(symbol, 'D', 3, 'linear'),
         this.client.getKlines(symbol, 'W', 3, 'linear'),
         this.client.getKlines(symbol, '240', 10, 'linear'),
