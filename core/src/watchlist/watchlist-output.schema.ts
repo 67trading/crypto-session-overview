@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { WatchlistSessionSchema } from './watchlist-input.schema.js';
 import {
-  WatchlistAssetSchema,
+  WatchlistAListAssetSchema,
+  WatchlistBListAssetSchema,
+  WatchlistCandidatePoolAssetSchema,
   WatchlistCatalystSchema,
   WatchlistRemovedDowngradedAssetSchema,
   WatchlistSectorMapItemSchema,
@@ -156,9 +158,9 @@ export const CryptoDailyWatchlistOutputSchema = z.object({
   }),
 
   watchlist: z.object({
-    aList: z.array(WatchlistAssetSchema).max(5),
-    bList: z.array(WatchlistAssetSchema).max(7),
-    candidatePool: z.array(WatchlistAssetSchema),
+    aList: z.array(WatchlistAListAssetSchema).max(5),
+    bList: z.array(WatchlistBListAssetSchema).max(7),
+    candidatePool: z.array(WatchlistCandidatePoolAssetSchema),
     removedDowngraded: z.array(WatchlistRemovedDowngradedAssetSchema),
   }),
 

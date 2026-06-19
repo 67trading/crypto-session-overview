@@ -52,6 +52,13 @@ const baseAsset = {
     'Remains relevant if it holds the breakout zone and continues to outperform BTC.',
   invalidationContext: 'Loses the breakout area with weak relative performance.',
   riskNotes: ['Avoid chasing if price extends far above intraday range.'],
+  dataQuality: {
+    symbol: 'SOL',
+    status: 'complete' as const,
+    missingFields: [],
+    staleFields: [],
+    warnings: [],
+  },
   isSignal: false as const,
 };
 
@@ -225,7 +232,6 @@ describe('CryptoDailyWatchlistOutputSchema', () => {
       rank: index + 1,
       score: 70,
       tier: 'B_LIST',
-      limitations: ['Lower relative strength than A-List assets.'],
     }));
     expect(() => CryptoDailyWatchlistOutputSchema.parse(invalid)).toThrow();
   });
@@ -242,6 +248,18 @@ describe('CryptoDailyWatchlistOutputSchema', () => {
     }));
     const parsed = CryptoDailyWatchlistOutputSchema.parse(valid);
     expect(parsed.watchlist.bList).toHaveLength(7);
+  });
+
+  it('rejects A-List asset with wrong tier literal', () => {
+    const invalid = JSON.parse(JSON.stringify(validOutput));
+    invalid.watchlist.aList[0].tier = 'B_LIST';
+    expect(() => CryptoDailyWatchlistOutputSchema.parse(invalid)).toThrow();
+  });
+
+  it('rejects removed/downgraded asset with finalTier A_LIST', () => {
+    const invalid = JSON.parse(JSON.stringify(validOutput));
+    invalid.watchlist.removedDowngraded[0].finalTier = 'A_LIST';
+    expect(() => CryptoDailyWatchlistOutputSchema.parse(invalid)).toThrow();
   });
 
   it('rejects wrong product literal', () => {

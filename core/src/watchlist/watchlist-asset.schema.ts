@@ -99,9 +99,21 @@ export const WatchlistAssetSchema = z.object({
   invalidationContext: z.string().nullable(),
   riskNotes: z.array(z.string()),
 
-  dataQuality: WatchlistAssetDataQualitySchema.optional(),
+  dataQuality: WatchlistAssetDataQualitySchema,
 
   isSignal: z.literal(false),
+});
+
+export const WatchlistAListAssetSchema = WatchlistAssetSchema.extend({
+  tier: z.literal('A_LIST'),
+});
+
+export const WatchlistBListAssetSchema = WatchlistAssetSchema.extend({
+  tier: z.literal('B_LIST'),
+});
+
+export const WatchlistCandidatePoolAssetSchema = WatchlistAssetSchema.extend({
+  tier: z.literal('CANDIDATE_POOL'),
 });
 
 export const WatchlistDowngradeReasonCodeSchema = z.enum([
@@ -122,11 +134,17 @@ export const WatchlistDowngradeReasonCodeSchema = z.enum([
   'QUALITY_GATE_FAILED',
 ]);
 
+export const WatchlistRemovedDowngradedFinalTierSchema = z.enum([
+  'B_LIST',
+  'CANDIDATE_POOL',
+  'EXCLUDED',
+]);
+
 export const WatchlistRemovedDowngradedAssetSchema = z.object({
   symbol: z.string().min(1),
   name: z.string().nullable(),
   previousTier: WatchlistTierSchema.nullable().optional(),
-  finalTier: WatchlistTierSchema,
+  finalTier: WatchlistRemovedDowngradedFinalTierSchema,
   reasonCodes: z.array(WatchlistDowngradeReasonCodeSchema).min(1),
   explanation: z.string().min(1),
   relevantMetrics: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])),
@@ -136,5 +154,9 @@ export type WatchlistSector = z.infer<typeof WatchlistSectorSchema>;
 export type WatchlistCatalyst = z.infer<typeof WatchlistCatalystSchema>;
 export type WatchlistSectorMapItem = z.infer<typeof WatchlistSectorMapItemSchema>;
 export type WatchlistAsset = z.infer<typeof WatchlistAssetSchema>;
+export type WatchlistAListAsset = z.infer<typeof WatchlistAListAssetSchema>;
+export type WatchlistBListAsset = z.infer<typeof WatchlistBListAssetSchema>;
+export type WatchlistCandidatePoolAsset = z.infer<typeof WatchlistCandidatePoolAssetSchema>;
+export type WatchlistRemovedDowngradedFinalTier = z.infer<typeof WatchlistRemovedDowngradedFinalTierSchema>;
 export type WatchlistRemovedDowngradedAsset = z.infer<typeof WatchlistRemovedDowngradedAssetSchema>;
 export type WatchlistDowngradeReasonCode = z.infer<typeof WatchlistDowngradeReasonCodeSchema>;

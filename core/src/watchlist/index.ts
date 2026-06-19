@@ -40,23 +40,31 @@ export type {
 } from './watchlist-quality.schema.js';
 
 export {
+  WatchlistAListAssetSchema,
   WatchlistAssetSchema,
+  WatchlistBListAssetSchema,
+  WatchlistCandidatePoolAssetSchema,
   WatchlistCatalystQualitySchema,
   WatchlistCatalystSchema,
   WatchlistCatalystSentimentSchema,
   WatchlistCatalystTypeSchema,
   WatchlistDowngradeReasonCodeSchema,
   WatchlistRemovedDowngradedAssetSchema,
+  WatchlistRemovedDowngradedFinalTierSchema,
   WatchlistSectorMapItemSchema,
   WatchlistSectorSchema,
   WatchlistSectorStatusSchema,
 } from './watchlist-asset.schema.js';
 
 export type {
+  WatchlistAListAsset,
   WatchlistAsset,
+  WatchlistBListAsset,
+  WatchlistCandidatePoolAsset,
   WatchlistCatalyst,
   WatchlistDowngradeReasonCode,
   WatchlistRemovedDowngradedAsset,
+  WatchlistRemovedDowngradedFinalTier,
   WatchlistSector,
   WatchlistSectorMapItem,
 } from './watchlist-asset.schema.js';
