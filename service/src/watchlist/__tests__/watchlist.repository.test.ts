@@ -165,6 +165,18 @@ describe('PrismaCryptoDailyWatchlistRepository', () => {
     });
   });
 
+  it('rejects invalid output on save', async () => {
+    const prisma = new FakeWatchlistPrisma();
+    const repo = new PrismaCryptoDailyWatchlistRepository(prisma);
+    const invalid = {
+      ...makeOutput({ session: 'EUROPE_CRYPTO' }),
+      product: 'bad-data',
+    } as unknown as CryptoDailyWatchlistOutput;
+
+    await expect(repo.saveWatchlist({ output: invalid })).rejects.toThrow();
+    expect(prisma.watchlistRows).toHaveLength(0);
+  });
+
   it('returns parsed watchlist output by id', async () => {
     const prisma = new FakeWatchlistPrisma();
     const repo = new PrismaCryptoDailyWatchlistRepository(prisma);

@@ -138,7 +138,7 @@ export class PrismaCryptoDailyWatchlistRepository implements CryptoDailyWatchlis
   }
 
   async saveWatchlist(args: SaveWatchlistArgs): Promise<string> {
-    const output = args.output;
+    const output = CryptoDailyWatchlistOutputSchema.parse(args.output);
 
     try {
       const record = await this.prisma.cryptoDailyWatchlist.create({
