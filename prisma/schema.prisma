@@ -45,6 +45,38 @@ model OverviewInput {
   savedAt   DateTime @default(now())
 }
 
+model CryptoDailyWatchlist {
+  id               String   @id @default(uuid())
+  session          String
+  status           String
+  outputJson       String
+  humanReport      String?
+  inputSnapshotId  String?
+  marketRegime     String?
+  scoreSummaryJson String?
+  dataQualityJson  String?
+  qcResultJson     String?
+  sourceOverviewId String?
+  runKey           String?  @unique
+  generatedAt      DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([session, generatedAt])
+  @@index([status])
+  @@index([marketRegime])
+  @@index([sourceOverviewId])
+}
+
+model WatchlistInput {
+  id        String   @id @default(uuid())
+  session   String
+  inputJson String
+  savedAt   DateTime @default(now())
+
+  @@index([session, savedAt])
+}
+
 model CollectedEvent {
   id             String   @id @default(uuid())
   eventId        String
